@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/documentListFragment">
+
+    <fragment
+        android:id="@+id/documentListFragment"
+        android:name="com.mkm.android.ui.document.DocumentListFragment"
+        android:label="Documents">
+        <action
+            android:id="@+id/action_documentList_to_detail"
+            app:destination="@id/documentDetailActivity" />
+    </fragment>
+
+    <activity
+        android:id="@+id/documentDetailActivity"
+        android:name="com.mkm.android.ui.document.DocumentDetailActivity"
+        android:label="Document">
+        <argument
+            android:name="docId"
+            app:argType="long"
+            android:defaultValue="-1L" />
+    </activity>
+
+    <fragment
+        android:id="@+id/aiAssistantFragment"
+        android:name="com.mkm.android.ui.assistant.AiAssistantFragment"
+        android:label="AI" />
+
+    <fragment
+        android:id="@+id/todoFragment"
+        android:name="com.mkm.android.ui.todo.TodoFragment"
+        android:label="Todo" />
+
+    <fragment
+        android:id="@+id/profileFragment"
+        android:name="com.mkm.android.ui.profile.ProfileFragment"
+        android:label="Mine" />
+</navigation>

@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Gradle
+.gradle/
+build/
+**/build/
+
+# Android
+android/local.properties
+android/.gradle/
+android/captures/
+android/app/release/
+
+# Node
+web/node_modules/
+web/dist/
+web/.vite/
+
+# Env
+.env
+*.env
+
+# Logs
+*.log

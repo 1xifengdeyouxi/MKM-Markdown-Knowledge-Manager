@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: mkm-postgres
+    environment:
+      POSTGRES_DB: mkm_db
+      POSTGRES_USER: mkm
+      POSTGRES_PASSWORD: mkm
+    ports:
+      - "5432:5432"
+    volumes:
+      - mkm_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mkm -d mkm_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mkm_pg_data:
