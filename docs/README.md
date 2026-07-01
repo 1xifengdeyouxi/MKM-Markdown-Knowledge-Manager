@@ -20,26 +20,57 @@ Android Markdown 知识库
 如果你是第一次阅读，建议按以下顺序：
 
 ```text
-1. product/01-product-positioning.md
-2. product/02-feature-roadmap.md
-3. product/03-mvp-scope.md
-4. product/04-user-flows.md
-5. product/05-module-specs.md
-6. technical/01-ai-architecture.md
-7. technical/02-ai-provider-config.md
-8. technical/03-ai-prompts.md
-9. technical/04-ai-feature-flows.md
-10. api/01-data-models.md
-11. api/02-api-spec.md
-12. design/01-android-ui.md
-13. design/02-state-flows.md
-14. deployment/01-launch-and-deployment.md
-15. deployment/02-commercialization-growth.md
+1. spec/01-basic-spec.md
+2. spec/02-android-spec.md
+3. spec/03-backend-spec.md
+4. spec/04-web-spec.md
+5. product/01-product-positioning.md
+6. product/02-feature-roadmap.md
+7. product/03-mvp-scope.md
+8. product/04-user-flows.md
+9. product/05-module-specs.md
+10. technical/01-ai-architecture.md
+11. technical/02-ai-provider-config.md
+12. technical/03-ai-prompts.md
+13. technical/04-ai-feature-flows.md
+14. api/01-data-models.md
+15. api/02-api-spec.md
+16. design/01-android-ui.md
+17. design/02-state-flows.md
+18. design/03-onboarding-repository-setup.md
+19. design/04-visual-system.md
+20. deployment/01-launch-and-deployment.md
+21. deployment/02-commercialization-growth.md
 ```
 
 ---
 
-## 2. 产品规划文档
+## 0. 基础 Spec 文档
+
+目录：`docs/spec/`
+
+| 文档 | 说明 |
+|---|---|
+| [01-basic-spec.md](spec/01-basic-spec.md) | 基础规格说明：产品边界、平台分工、功能 Spec、安全、验收标准 |
+| [02-android-spec.md](spec/02-android-spec.md) | Android 端规范：页面、数据、本地仓库、状态、安全、验收 |
+| [03-backend-spec.md](spec/03-backend-spec.md) | Backend 端规范：模块职责、API、数据库、安全、部署、验收 |
+| [04-web-spec.md](spec/04-web-spec.md) | Web 端规范：页面、路由、状态管理、Markdown 渲染、安全、部署 |
+
+### Spec 核心结论
+
+V1 的基础原则：
+
+```text
+本地优先 · 仓库优先 · 账号可选
+Android 主体验 · Web 辅助管理
+AI BYOK · 不代付 AI 费用
+Markdown + Todo + Knowledge 三条核心链路
+V1 不商业化，先验证核心使用价值
+```
+
+---
+
+
 
 目录：`docs/product/`
 
@@ -144,11 +175,14 @@ User
 |---|---|
 | [01-android-ui.md](design/01-android-ui.md) | Android 页面结构、布局草图、BottomNav、弹窗、AI 设置页面 |
 | [02-state-flows.md](design/02-state-flows.md) | 页面状态机、导航流转、Token 过期、网络异常处理 |
+| [03-onboarding-repository-setup.md](design/03-onboarding-repository-setup.md) | 首次启动流程、仓库初始化、存储位置选择、语言选择 |
+| [04-visual-system.md](design/04-visual-system.md) | 颜色系统、字体层级、间距、圆角、动效、组件样式规范 |
 
 ### Android 核心页面
 
 ```text
-LoginActivity
+OnboardingActivity（首次启动）
+LoginActivity（可选，仅同步时出现）
 MainActivity
 ├── MarkdownFragment
 ├── TodoFragment
