@@ -48,7 +48,40 @@ Markwon
 
 ---
 
-## 3.2 避免事项
+## 3.2 开发环境建议
+
+| 项目 | 推荐版本 / 工具 | 说明 |
+|---|---|---|
+| JDK | **17 LTS** | 与 Backend 共用，Gradle JDK 也选 17 |
+| Android Studio | **Meerkat 2024.3.1** 或更新 | 主开发 IDE |
+| Android Gradle Plugin | **8.3.2** | 已在根 `build.gradle.kts` 锁定 |
+| Kotlin | **1.9.25** | 与 KSP 版本匹配 |
+| KSP | **1.9.25-1.0.20** | Room 注解处理器 |
+| compileSdk / targetSdk | **34** | 已安装 Android 14 SDK |
+| minSdk | **26** | Android 8.0+ |
+| 模拟器 | Pixel 7 / API 34 / arm64-v8a | Apple Silicon Mac 使用 arm64 镜像 |
+
+详细安装说明见：`docs/deployment/00-dev-environment.md`。
+
+---
+
+## 3.3 核心依赖版本
+
+| 依赖 | 版本 |
+|---|---|
+| Material Components | 1.12.0 |
+| Navigation Fragment/UI KTX | 2.7.7 |
+| Lifecycle ViewModel / LiveData KTX | 2.8.4 |
+| Coroutines Android | 1.8.1 |
+| Retrofit | 2.11.0 |
+| OkHttp | 4.12.0 |
+| Room | 2.6.1 |
+| DataStore Preferences | 1.1.1 |
+| Markwon | 4.6.2 |
+
+---
+
+## 3.4 避免事项
 
 ```text
 V1 不使用 Jetpack Compose 作为主 UI

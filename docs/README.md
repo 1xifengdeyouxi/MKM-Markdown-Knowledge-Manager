@@ -20,6 +20,7 @@ Android Markdown 知识库
 如果你是第一次阅读，建议按以下顺序：
 
 ```text
+0. deployment/00-dev-environment.md   ← 开发环境配置（先看这个）
 1. spec/01-basic-spec.md
 2. spec/02-android-spec.md
 3. spec/03-backend-spec.md
@@ -201,6 +202,7 @@ AiProviderSettingsActivity
 
 | 文档 | 说明 |
 |---|---|
+| [00-dev-environment.md](deployment/00-dev-environment.md) | **开发环境配置**：JDK、Android Studio、Node.js、Docker 安装和版本说明 |
 | [01-launch-and-deployment.md](deployment/01-launch-and-deployment.md) | 本地开发、服务器部署、Docker、Nginx、HTTPS、备份、Android 发布 |
 | [02-commercialization-growth.md](deployment/02-commercialization-growth.md) | 商业化路线、定价草案、增长路径、风险分析 |
 

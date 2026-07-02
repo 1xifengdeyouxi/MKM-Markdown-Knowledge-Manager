@@ -70,7 +70,52 @@ DOMPurify
 
 ---
 
-## 3.3 不使用
+## 3.3 开发环境建议
+
+| 项目 | 推荐版本 / 工具 | 说明 |
+|---|---|---|
+| Node.js | **20 LTS** | 推荐通过 nvm 管理版本 |
+| npm | **10.x** | 随 Node 20 安装 |
+| IDE | VS Code | 安装 Vue - Official 扩展 |
+| 浏览器 | Chrome + Vue Devtools | 调试组件和 Pinia 状态 |
+
+**安装 nvm（Apple Silicon Mac）：**
+
+```sh
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+source ~/.zshrc
+nvm install 20
+nvm use 20
+```
+
+**首次安装依赖：**
+
+```sh
+cd web
+npm install
+npm run dev    # http://localhost:5173
+```
+
+详细安装说明见：`docs/deployment/00-dev-environment.md`。
+
+---
+
+## 3.4 已锁定依赖版本
+
+| 依赖 | 版本（package.json） |
+|---|---|
+| vue | ^3.5.3 |
+| vue-router | ^4.4.3 |
+| pinia | ^2.2.2 |
+| axios | ^1.7.7 |
+| marked | ^14.1.2 |
+| dompurify | ^3.1.6 |
+| vite | ^5.4.2 |
+| @vitejs/plugin-vue | ^5.1.2 |
+
+---
+
+## 3.5 不使用
 
 ```text
 TypeScript（V1 使用 JavaScript）

@@ -58,6 +58,38 @@ BCrypt
 
 ---
 
+## 3.3 开发环境建议
+
+| 项目 | 推荐版本 / 工具 | 说明 |
+|---|---|---|
+| JDK | **17 LTS** | 与 Android 共用，`build.gradle.kts` toolchain 使用 17 |
+| IDE | IntelliJ IDEA / Android Studio | Kotlin + Spring Boot 开发 |
+| Gradle | 使用项目自带 `./gradlew` | 不要求全局安装 Gradle |
+| PostgreSQL | **16** | 开发环境通过 Docker Compose 启动 |
+| Docker | Docker Desktop for Mac | 用于运行 PostgreSQL |
+| API 调试 | Postman / Insomnia / curl | 调试 REST API |
+
+详细安装说明见：`docs/deployment/00-dev-environment.md`。
+
+---
+
+## 3.4 核心依赖清单
+
+```text
+spring-boot-starter-web          REST API
+spring-boot-starter-security     Spring Security 6
+spring-boot-starter-data-jpa     JPA / Hibernate
+spring-boot-starter-validation   参数校验
+jackson-module-kotlin            Kotlin JSON 序列化
+kotlin-reflect                   Spring Kotlin 反射支持
+jjwt-api / impl / jackson 0.12.6 JWT
+postgresql                       PostgreSQL JDBC Driver
+spring-boot-starter-test         测试框架
+spring-security-test             Security 测试工具
+```
+
+---
+
 # 4. 项目结构规范
 
 ```text
