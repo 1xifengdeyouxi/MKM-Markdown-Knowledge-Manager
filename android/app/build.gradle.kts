@@ -4,6 +4,10 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+configurations.configureEach {
+    exclude(group = "org.jetbrains", module = "annotations-java5")
+}
+
 android {
     namespace = "com.mkm.android"
     compileSdk = 34

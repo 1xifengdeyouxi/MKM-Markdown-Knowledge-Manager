@@ -242,7 +242,32 @@ Password: mkm（开发环境，生产必须换）
 
 > 生产环境密码必须通过环境变量注入，不得使用 `mkm`。
 
-### 3.5 Backend 开发启动命令
+### 3.5 Backend Gradle Wrapper
+
+Backend 使用独立 Gradle Wrapper，版本为 **8.8**。正常开发启动后端时只使用 `./gradlew`，不要依赖全局 `gradle bootRun`。
+
+如果首次拉取项目后 `backend/` 下缺少 `gradlew`，先临时安装系统 Gradle：
+
+```sh
+brew install gradle
+```
+
+然后在 `backend/` 目录生成 Wrapper。当前推荐使用国内镜像，避免访问 `services.gradle.org` 失败：
+
+```sh
+gradle wrapper --gradle-distribution-url https://mirrors.cloud.tencent.com/gradle/gradle-8.8-bin.zip
+```
+
+生成后确认以下文件存在，并提交到版本库：
+
+```text
+backend/gradlew
+backend/gradlew.bat
+backend/gradle/wrapper/gradle-wrapper.jar
+backend/gradle/wrapper/gradle-wrapper.properties
+```
+
+### 3.6 Backend 开发启动命令
 
 ```sh
 cd backend
@@ -417,6 +442,35 @@ echo $JAVA_HOME
 
 # 在 IDEA 中：File → Settings → Gradle → Gradle JVM → 选 17
 ```
+
+### Q: Backend 执行 `./gradlew bootRun` 报 `no such file or directory: ./gradlew`
+
+原因：`backend/` 缺少 Gradle Wrapper 文件。
+
+解决：
+
+```sh
+cd /path/to/myProject/backend
+gradle wrapper --gradle-distribution-url https://mirrors.cloud.tencent.com/gradle/gradle-8.8-bin.zip
+chmod +x gradlew
+./gradlew bootRun
+```
+
+### Q: Backend 执行 `gradle wrapper --gradle-version 8.8` 报 `Test of distribution url ... failed`
+
+原因：本机网络无法访问 Gradle 官方分发包 `services.gradle.org`。
+
+解决：使用可访问的 Gradle 镜像地址生成 Wrapper：
+
+```sh
+gradle wrapper --gradle-distribution-url https://mirrors.cloud.tencent.com/gradle/gradle-8.8-bin.zip
+```
+
+### Q: Backend 执行 `gradle wrapper` 报 `Build was configured to prefer settings repositories over project repositories`
+
+原因：`settings.gradle.kts` 已配置 `repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)`，不允许在 `build.gradle.kts` 中再声明 `repositories { mavenCentral() }`。
+
+解决：保留 `settings.gradle.kts` 中的仓库配置，删除 `backend/build.gradle.kts` 里的 `repositories` 块。
 
 ### Q: Android Gradle 同步失败，报 "Installed Build Tools revision X requires exactly revision Y"
 

@@ -26,16 +26,20 @@ docker compose up -d db
 
 ### 启动后端
 
+首次拉取项目后，如果 `backend/` 下还没有 `gradlew`，先生成 Backend Gradle Wrapper：
+
 ```bash
 cd backend
+gradle wrapper --gradle-distribution-url https://mirrors.cloud.tencent.com/gradle/gradle-8.8-bin.zip
+```
+
+之后统一使用 Wrapper 启动后端：
+
+```bash
 ./gradlew bootRun
 ```
 
-如果本地没有 Gradle Wrapper，可先使用本机 Gradle：
-
-```bash
-gradle bootRun
-```
+> 说明：全局 `gradle` 只用于首次生成 Wrapper；正常开发不要依赖 `gradle bootRun`，避免本机 Gradle 版本不一致。
 
 ### 启动 Web
 
