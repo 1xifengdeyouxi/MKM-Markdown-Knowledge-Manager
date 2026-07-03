@@ -1,8 +1,8 @@
 package com.mkm.android.data.remote
 
 import android.content.Context
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
+import com.mkm.android.data.local.TOKEN_KEY
+import com.mkm.android.data.local.authDataStore
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
@@ -12,12 +12,9 @@ import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
-private val Context.tokenDataStore by preferencesDataStore(name = "auth_prefs")
-val TOKEN_KEY = stringPreferencesKey("jwt_token")
-
 object RetrofitClient {
-    // Use 10.0.2.2 for Android Emulator to access host machine
-    private const val BASE_URL = "http://10.0.2.2:8080/api/"
+    // 10.0.2.2 适用于标准 AVD 模拟器；其他模拟器或真机请使用电脑局域网 IP
+    private const val BASE_URL = "http://172.22.148.132:8080/api/"
 
     private var appContext: Context? = null
 
@@ -28,7 +25,7 @@ object RetrofitClient {
     private val authInterceptor = Interceptor { chain ->
         val token = appContext?.let { ctx ->
             runBlocking {
-                ctx.tokenDataStore.data.map { it[TOKEN_KEY] }.firstOrNull()
+                ctx.authDataStore.data.map { it[TOKEN_KEY] }.firstOrNull()
             }
         }
         val request = if (token != null) {

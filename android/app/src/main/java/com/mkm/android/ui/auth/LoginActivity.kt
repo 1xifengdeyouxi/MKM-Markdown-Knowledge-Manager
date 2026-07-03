@@ -1,23 +1,20 @@
 package com.mkm.android.ui.auth
 
-import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
+import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.snackbar.Snackbar
 import com.mkm.android.MainActivity
+import com.mkm.android.data.local.TOKEN_KEY
+import com.mkm.android.data.local.authDataStore
 import com.mkm.android.data.remote.RetrofitClient
-import com.mkm.android.data.remote.TOKEN_KEY
 import com.mkm.android.databinding.ActivityLoginBinding
 import com.mkm.android.model.LoginRequest
 import com.mkm.android.model.RegisterRequest
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.launch
-
-private val Context.tokenDataStore by preferencesDataStore(name = "auth_prefs")
 
 class LoginActivity : AppCompatActivity() {
 
@@ -46,7 +43,7 @@ class LoginActivity : AppCompatActivity() {
                 check(resp.isSuccessful) { "Login failed: ${resp.code()}" }
                 resp.body()!!
             }.onSuccess { tokenResponse ->
-                tokenDataStore.edit { it[TOKEN_KEY] = tokenResponse.token }
+                authDataStore.edit { it[TOKEN_KEY] = tokenResponse.token }
                 startActivity(Intent(this@LoginActivity, MainActivity::class.java))
                 finish()
             }.onFailure {
@@ -70,7 +67,7 @@ class LoginActivity : AppCompatActivity() {
                 check(resp.isSuccessful) { "Register failed: ${resp.code()}" }
                 resp.body()!!
             }.onSuccess { tokenResponse ->
-                tokenDataStore.edit { it[TOKEN_KEY] = tokenResponse.token }
+                authDataStore.edit { it[TOKEN_KEY] = tokenResponse.token }
                 startActivity(Intent(this@LoginActivity, MainActivity::class.java))
                 finish()
             }.onFailure {

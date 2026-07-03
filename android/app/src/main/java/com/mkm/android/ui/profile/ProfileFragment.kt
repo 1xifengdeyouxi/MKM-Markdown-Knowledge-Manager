@@ -5,17 +5,14 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.datastore.preferences.core.edit
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.preferencesDataStore
-import android.content.Context
-import com.mkm.android.data.remote.TOKEN_KEY
+import com.mkm.android.data.local.TOKEN_KEY
+import com.mkm.android.data.local.authDataStore
 import com.mkm.android.databinding.FragmentProfileBinding
 import com.mkm.android.ui.auth.LoginActivity
 import kotlinx.coroutines.launch
-
-private val Context.tokenDataStore by preferencesDataStore(name = "auth_prefs")
 
 class ProfileFragment : Fragment() {
     private var _binding: FragmentProfileBinding? = null
@@ -29,7 +26,7 @@ class ProfileFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         binding.btnLogout.setOnClickListener {
             lifecycleScope.launch {
-                requireContext().tokenDataStore.edit { it.remove(TOKEN_KEY) }
+                requireContext().authDataStore.edit { it.remove(TOKEN_KEY) }
                 startActivity(Intent(requireContext(), LoginActivity::class.java))
                 requireActivity().finish()
             }

@@ -71,6 +71,9 @@ dependencies {
     implementation("io.noties.markwon:image:4.6.2")
     implementation("io.noties.markwon:syntax-highlight:4.6.2")
 
+    // CodeLocator
+    implementation("com.bytedance.tools.codelocator:codelocator-core:2.0.4")
+    debugImplementation("com.bytedance.tools.codelocator:codelocator-lancet-all:2.0.4")
     // SharedPreferences DataStore
     implementation("androidx.datastore:datastore-preferences:1.1.1")
 }

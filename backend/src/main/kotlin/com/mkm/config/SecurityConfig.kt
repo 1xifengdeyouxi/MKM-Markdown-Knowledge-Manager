@@ -25,8 +25,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 @Configuration
 @EnableWebSecurity
 class SecurityConfig(
-    private val userRepository: UserRepository,
-    private val jwtAuthFilter: JwtAuthFilter
+    private val userRepository: UserRepository
 ) {
     @Bean
     fun userDetailsService(): UserDetailsService = UserDetailsService { username ->
@@ -52,7 +51,7 @@ class SecurityConfig(
     fun authenticationManager(config: AuthenticationConfiguration): AuthenticationManager = config.authenticationManager
 
     @Bean
-    fun securityFilterChain(http: HttpSecurity): SecurityFilterChain = http
+    fun securityFilterChain(http: HttpSecurity, jwtAuthFilter: JwtAuthFilter): SecurityFilterChain = http
         .csrf { it.disable() }
         .cors { it.configurationSource(corsConfigurationSource()) }
         .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
