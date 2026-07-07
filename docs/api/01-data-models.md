@@ -20,23 +20,21 @@ V1 包含以下核心表：
 | 表名 | 说明 |
 |---|---|
 | users | 用户账号 |
-| documents | Markdown 文档 |
+| documents | Markdown 文档（含文件夹路径、同步状态） |
+| attachments | 附件（二进制 + 元数据） |
 | todos | 待办任务 |
 | ai_provider_configs | 用户 AI 模型配置 |
-| ai_conversations | AI 对话会话（可选，V1 建表备用） |
-| ai_messages | AI 对话消息（可选，V1 建表备用） |
-| ai_call_logs | AI 调用日志（可选） |
+| ai_conversations | AI 对话会话 |
+| ai_messages | AI 对话消息 |
+| ai_call_logs | AI 调用日志（仅状态/性能） |
 
 V2/V3 扩展表（本文档不实现，仅预留设计方向）：
 
 | 表名 | 阶段 | 说明 |
 |---|---|---|
-| knowledge_bases | V3 | 公开知识库 |
-| knowledge_base_documents | V3 | 知识库文档关联 |
 | comments | V3 | 评论 |
-| favorites | V3 | 收藏 |
-| document_tags | V2 | 文档标签（当前 tags 字段升级） |
-| tags | V2 | 标签表 |
+| likes | V3 | 点赞 |
+| document_tags | V2 | 标签升级 |
 | vector_chunks | V3 | 文档向量切片 |
 
 ---
@@ -50,7 +48,7 @@ CREATE TABLE users (
     password     VARCHAR(256) NOT NULL,
     email        VARCHAR(128) UNIQUE,
     avatar_url   VARCHAR(512),
-    bio          TEXT,
+    nickname     VARCHAR(64),
     created_at   TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at   TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -64,8 +62,8 @@ CREATE TABLE users (
 | username | VARCHAR(64) | 唯一用户名，不可重复 |
 | password | VARCHAR(256) | BCrypt 加密后密码 |
 | email | VARCHAR(128) | 可选，唯一 |
-| avatar_url | VARCHAR(512) | 头像 URL，V2 使用 |
-| bio | TEXT | 个人简介，V2 使用 |
+| avatar_url | VARCHAR(512) | 头像 URL |
+| nickname | VARCHAR(64) | 显示昵称 |
 | created_at | TIMESTAMP | 创建时间 |
 | updated_at | TIMESTAMP | 更新时间 |
 
@@ -84,8 +82,8 @@ class User(
     var email: String? = null,
     @Column(length = 512)
     var avatarUrl: String? = null,
-    @Column(columnDefinition = "TEXT")
-    var bio: String? = null,
+    @Column(length = 64)
+    var nickname: String? = null,
     @Column(nullable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),
     @Column(nullable = false)
@@ -99,19 +97,21 @@ class User(
 
 ```sql
 CREATE TABLE documents (
-    id           BIGSERIAL PRIMARY KEY,
-    title        VARCHAR(256) NOT NULL,
-    content      TEXT NOT NULL DEFAULT '',
-    summary      TEXT,
-    is_public    BOOLEAN NOT NULL DEFAULT FALSE,
-    tags         VARCHAR(512),
-    owner_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at   TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at   TIMESTAMP NOT NULL DEFAULT NOW()
+    id               BIGSERIAL PRIMARY KEY,
+    title            VARCHAR(256) NOT NULL,
+    content          TEXT NOT NULL DEFAULT '',
+    folder_path      VARCHAR(1024) NOT NULL DEFAULT '/',
+    file_name        VARCHAR(256) NOT NULL,
+    tags             VARCHAR(512),
+    sync_enabled     BOOLEAN NOT NULL DEFAULT FALSE,
+    local_updated_at TIMESTAMP,
+    owner_id         BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_documents_owner_id ON documents(owner_id);
-CREATE INDEX idx_documents_is_public ON documents(is_public);
+CREATE INDEX idx_documents_folder_path ON documents(owner_id, folder_path);
 CREATE INDEX idx_documents_updated_at ON documents(updated_at DESC);
 ```
 
@@ -122,12 +122,14 @@ CREATE INDEX idx_documents_updated_at ON documents(updated_at DESC);
 | id | BIGSERIAL | 主键 |
 | title | VARCHAR(256) | 文档标题，必填 |
 | content | TEXT | Markdown 内容 |
-| summary | TEXT | AI 生成摘要，可选 |
-| is_public | BOOLEAN | 是否公开，默认 false |
-| tags | VARCHAR(512) | 简单标签，逗号分隔，V2 可升级 |
+| folder_path | VARCHAR(1024) | 文件夹路径，如 `/Android/` |
+| file_name | VARCHAR(256) | 文件名，如 `Room.md` |
+| tags | VARCHAR(512) | 标签，逗号分隔 |
+| sync_enabled | BOOLEAN | 是否开启云端同步 |
+| local_updated_at | TIMESTAMP | 本地最后修改时间，用于冲突检测 |
 | owner_id | BIGINT | 所属用户 FK |
 | created_at | TIMESTAMP | 创建时间 |
-| updated_at | TIMESTAMP | 更新时间 |
+| updated_at | TIMESTAMP | 云端更新时间 |
 
 ### JPA 实体
 
@@ -140,12 +142,15 @@ class Document(
     var title: String,
     @Column(nullable = false, columnDefinition = "TEXT")
     var content: String = "",
-    @Column(columnDefinition = "TEXT")
-    var summary: String? = null,
-    @Column(nullable = false)
-    var isPublic: Boolean = false,
+    @Column(nullable = false, length = 1024)
+    var folderPath: String = "/",
+    @Column(nullable = false, length = 256)
+    var fileName: String,
     @Column(length = 512)
     var tags: String? = null,
+    @Column(nullable = false)
+    var syncEnabled: Boolean = false,
+    var localUpdatedAt: LocalDateTime? = null,
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id", nullable = false)
     val owner: User,
@@ -160,18 +165,83 @@ class Document(
 
 ---
 
-# 5. todos 表
+# 5. attachments 表
+
+```sql
+CREATE TABLE attachments (
+    id            BIGSERIAL PRIMARY KEY,
+    document_id   BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    owner_id      BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    file_name     VARCHAR(256) NOT NULL,
+    relative_path VARCHAR(1024) NOT NULL,
+    mime_type     VARCHAR(128),
+    file_size     BIGINT NOT NULL,
+    data          BYTEA NOT NULL,
+    created_at    TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_attachments_document_id ON attachments(document_id);
+CREATE INDEX idx_attachments_owner_id ON attachments(owner_id);
+```
+
+### 字段说明
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | BIGSERIAL | 主键 |
+| document_id | BIGINT | 关联文档 FK |
+| owner_id | BIGINT | 所属用户 FK |
+| file_name | VARCHAR(256) | 原始文件名 |
+| relative_path | VARCHAR(1024) | 相对于知识库根目录的路径 |
+| mime_type | VARCHAR(128) | 文件 MIME 类型 |
+| file_size | BIGINT | 文件大小（字节），上限 10MB |
+| data | BYTEA | 附件二进制数据 |
+| created_at | TIMESTAMP | 上传时间 |
+
+### JPA 实体
+
+```kotlin
+@Entity @Table(name = "attachments")
+class Attachment(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    val id: Long = 0,
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "document_id", nullable = false)
+    val document: Document,
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id", nullable = false)
+    val owner: User,
+    @Column(nullable = false, length = 256)
+    val fileName: String,
+    @Column(nullable = false, length = 1024)
+    val relativePath: String,
+    @Column(length = 128)
+    val mimeType: String? = null,
+    @Column(nullable = false)
+    val fileSize: Long,
+    @Column(nullable = false, columnDefinition = "BYTEA")
+    val data: ByteArray,
+    @Column(nullable = false)
+    val createdAt: LocalDateTime = LocalDateTime.now()
+)
+```
+
+---
+
+# 6. todos 表
 
 ```sql
 CREATE TABLE todos (
     id                  BIGSERIAL PRIMARY KEY,
     title               VARCHAR(256) NOT NULL,
-    description         TEXT,
+    note                TEXT,
     completed           BOOLEAN NOT NULL DEFAULT FALSE,
     priority            VARCHAR(16) DEFAULT 'medium',
     due_date            TIMESTAMP,
     source_type         VARCHAR(32) DEFAULT 'manual',
     source_document_id  BIGINT REFERENCES documents(id) ON DELETE SET NULL,
+    source_document_title VARCHAR(256),
+    completed_at        TIMESTAMP,
     owner_id            BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMP NOT NULL DEFAULT NOW()
@@ -179,6 +249,7 @@ CREATE TABLE todos (
 
 CREATE INDEX idx_todos_owner_id ON todos(owner_id);
 CREATE INDEX idx_todos_completed ON todos(completed);
+CREATE INDEX idx_todos_due_date ON todos(due_date);
 ```
 
 ### 字段说明
@@ -187,12 +258,14 @@ CREATE INDEX idx_todos_completed ON todos(completed);
 |---|---|---|
 | id | BIGSERIAL | 主键 |
 | title | VARCHAR(256) | 待办标题，必填 |
-| description | TEXT | 描述，可选 |
+| note | TEXT | 备注，可选 |
 | completed | BOOLEAN | 是否完成 |
 | priority | VARCHAR(16) | low / medium / high |
 | due_date | TIMESTAMP | 截止时间，可选 |
-| source_type | VARCHAR(32) | manual / document / ai |
+| source_type | VARCHAR(32) | manual / ai |
 | source_document_id | BIGINT | 来源文档 FK，可选 |
+| source_document_title | VARCHAR(256) | 来源文档标题（冗余，防 FK 丢失） |
+| completed_at | TIMESTAMP | 完成时间 |
 | owner_id | BIGINT | 所属用户 FK |
 | created_at | TIMESTAMP | 创建时间 |
 | updated_at | TIMESTAMP | 更新时间 |
@@ -207,7 +280,7 @@ class Todo(
     @Column(nullable = false, length = 256)
     var title: String,
     @Column(columnDefinition = "TEXT")
-    var description: String? = null,
+    var note: String? = null,
     @Column(nullable = false)
     var completed: Boolean = false,
     @Column(length = 16)
@@ -218,6 +291,9 @@ class Todo(
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "source_document_id")
     var sourceDocument: Document? = null,
+    @Column(length = 256)
+    var sourceDocumentTitle: String? = null,
+    var completedAt: LocalDateTime? = null,
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id", nullable = false)
     val owner: User,
@@ -232,19 +308,17 @@ class Todo(
 
 ---
 
-# 6. ai_provider_configs 表
+# 7. ai_provider_configs 表
 
 ```sql
 CREATE TABLE ai_provider_configs (
     id                BIGSERIAL PRIMARY KEY,
     owner_id          BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     provider_name     VARCHAR(64) NOT NULL,
-    provider_type     VARCHAR(32) NOT NULL DEFAULT 'openai-compatible',
     base_url          VARCHAR(512) NOT NULL,
     encrypted_api_key TEXT NOT NULL,
     model_name        VARCHAR(128) NOT NULL,
     enabled           BOOLEAN NOT NULL DEFAULT TRUE,
-    default_provider  BOOLEAN NOT NULL DEFAULT FALSE,
     created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at        TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -259,12 +333,10 @@ CREATE INDEX idx_ai_providers_owner_id ON ai_provider_configs(owner_id);
 | id | BIGSERIAL | 主键 |
 | owner_id | BIGINT | 所属用户 FK |
 | provider_name | VARCHAR(64) | 用户显示名，如 DeepSeek |
-| provider_type | VARCHAR(32) | openai-compatible / anthropic |
-| base_url | VARCHAR(512) | API 基础路径 |
+| base_url | VARCHAR(512) | OpenAI 兼容 API Base URL |
 | encrypted_api_key | TEXT | 加密后的 API Key |
 | model_name | VARCHAR(128) | 模型名，如 deepseek-chat |
 | enabled | BOOLEAN | 是否启用 |
-| default_provider | BOOLEAN | 是否为默认模型 |
 | created_at | TIMESTAMP | 创建时间 |
 | updated_at | TIMESTAMP | 更新时间 |
 
@@ -280,8 +352,6 @@ class AiProviderConfig(
     val owner: User,
     @Column(nullable = false, length = 64)
     var providerName: String,
-    @Column(nullable = false, length = 32)
-    var providerType: String = "openai-compatible",
     @Column(nullable = false, length = 512)
     var baseUrl: String,
     @Column(nullable = false, columnDefinition = "TEXT")
@@ -290,8 +360,6 @@ class AiProviderConfig(
     var modelName: String,
     @Column(nullable = false)
     var enabled: Boolean = true,
-    @Column(nullable = false)
-    var defaultProvider: Boolean = false,
     @Column(nullable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),
     @Column(nullable = false)
@@ -303,9 +371,7 @@ class AiProviderConfig(
 
 ---
 
-# 7. ai_conversations 表
-
-V1 可选，建议预建表方便后续扩展。
+# 8. ai_conversations 表
 
 ```sql
 CREATE TABLE ai_conversations (
@@ -331,11 +397,38 @@ markdown_generate   Markdown 生成
 todo_extract        待办提取
 ```
 
+### JPA 实体
+
+```kotlin
+@Entity @Table(name = "ai_conversations")
+class AiConversation(
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    val id: Long = 0,
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "owner_id", nullable = false)
+    val owner: User,
+    @Column(nullable = false, length = 256)
+    var title: String = "新对话",
+    @Column(length = 32)
+    var sourceType: String = "chat",
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "source_document_id")
+    var sourceDocument: Document? = null,
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "provider_config_id")
+    var providerConfig: AiProviderConfig? = null,
+    @Column(nullable = false)
+    val createdAt: LocalDateTime = LocalDateTime.now(),
+    @Column(nullable = false)
+    var updatedAt: LocalDateTime = LocalDateTime.now()
+) {
+    @PreUpdate fun onUpdate() { updatedAt = LocalDateTime.now() }
+}
+```
+
 ---
 
-# 8. ai_messages 表
-
-V1 可选，建议预建表。
+# 9. ai_messages 表
 
 ```sql
 CREATE TABLE ai_messages (
@@ -359,9 +452,9 @@ assistant
 
 ---
 
-# 9. ai_call_logs 表
+# 10. ai_call_logs 表
 
-V1 可选，用于排查问题和统计。
+用于排查问题和统计，禁止保存敏感内容。
 
 ```sql
 CREATE TABLE ai_call_logs (
@@ -386,35 +479,40 @@ ai_call_logs 禁止保存：
 - prompt 内容
 - API Key
 - 完整请求体
+- 完整响应体
 只保存状态信息和性能指标。
 ```
 
 ---
 
-# 10. 实体关系总览
+# 11. 实体关系总览
 
 ```text
 users 1 ─── N documents
+users 1 ─── N attachments
 users 1 ─── N todos
 users 1 ─── N ai_provider_configs
 users 1 ─── N ai_conversations
 users 1 ─── N ai_call_logs
+documents 1 ─── N attachments
 ai_conversations 1 ─── N ai_messages
-documents N ─── 1 ai_conversations（可选，来源关联）
 todos N ─── 1 documents（可选，来源文档）
 ```
 
 ---
 
-# 11. 索引策略
+# 12. 索引策略
 
 | 表 | 索引字段 | 原因 |
 |---|---|---|
 | documents | owner_id | 查询我的文档 |
-| documents | is_public | 查询公开文档 |
+| documents | (owner_id, folder_path) | 查询某文件夹文档 |
 | documents | updated_at DESC | 按更新时间排序 |
+| attachments | document_id | 查询某文档的附件 |
+| attachments | owner_id | 查询用户附件 |
 | todos | owner_id | 查询我的待办 |
 | todos | completed | 过滤未完成/已完成 |
+| todos | due_date | 按截止时间排序 |
 | ai_provider_configs | owner_id | 查询我的 Provider |
 | ai_conversations | owner_id | 查询我的对话 |
 | ai_messages | conversation_id | 查询某个对话的消息 |
@@ -422,7 +520,7 @@ todos N ─── 1 documents（可选，来源文档）
 
 ---
 
-# 12. 迁移策略
+# 13. 迁移策略
 
 ## V1 开发阶段
 
@@ -440,31 +538,31 @@ spring.jpa.hibernate.ddl-auto: update
 spring.jpa.hibernate.ddl-auto: validate
 ```
 
-配合 Flyway 或 Liquibase 做数据库版本管理。
+配合 Flyway 做数据库版本管理。
 
 ## Flyway 文件命名约定
 
 ```text
-V1__init_schema.sql           初始建表
-V2__add_todos.sql             新增 todos
-V3__add_ai_provider.sql       新增 AI Provider
-V4__add_ai_conversation.sql   新增 AI 对话
+V1__init_schema.sql           初始建表（users, documents, attachments, todos）
+V2__add_ai_tables.sql         添加 AI 相关表
+V3__add_ai_call_logs.sql      添加 AI 调用日志
 ```
 
 ---
 
-# 13. 当前结论
+# 14. 当前结论
 
-MKM V1 数据库设计完成，共 7 张表：
+MKM V1 数据库设计共 8 张表：
 
 | 表 | V1 必建 |
 |---|---|
 | users | 是 |
-| documents | 是 |
+| documents | 是（含文件夹路径、同步状态） |
+| attachments | 是（PostgreSQL 二进制存储，10MB 上限） |
 | todos | 是 |
 | ai_provider_configs | 是 |
-| ai_conversations | 建议预建 |
-| ai_messages | 建议预建 |
-| ai_call_logs | 可选 |
+| ai_conversations | 是 |
+| ai_messages | 是 |
+| ai_call_logs | 建议预建 |
 
-这套设计可以支撑 V1 所有功能，并为 V2/V3 的知识库、RAG、评论、社区功能预留扩展空间，不需要推翻重建。
+这套设计可以支撑 V1 所有功能，并为 V2/V3 预留扩展空间，不需要推翻重建。

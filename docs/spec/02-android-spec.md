@@ -14,19 +14,22 @@ Android 端定位：
 
 ```text
 MKM 的主体验端
-负责本地仓库初始化、Markdown 阅读/编辑、Todo 管理、AI 使用、公开知识库浏览和个人设置
+负责知识库初始化、Markdown 阅读/编辑、文件夹管理、Todo 管理、AI 使用和个人设置
 ```
 
 V1 设计原则：
 
 ```text
 本地优先
-仓库优先
+知识库优先
 登录可选
 离线可用
-AI 配置可选
+每篇文档独立控制云端同步
+AI 必须登录并配置 API Key 后使用
 界面简洁，适合手机阅读 Markdown
 ```
+
+V1 不做社区、评论、点赞、公开知识库浏览。
 
 ---
 
@@ -44,6 +47,7 @@ Retrofit + OkHttp
 Room
 DataStore
 Markwon
+Storage Access Framework
 ```
 
 ---
@@ -89,6 +93,7 @@ V1 不使用 Jetpack Compose 作为主 UI
 不要在前端长期保存完整 API Key
 不要将 Token、API Key 打入日志
 不要让网络失败清空本地数据
+不要把登录作为使用 App 的前置条件
 ```
 
 ---
@@ -98,19 +103,18 @@ V1 不使用 Jetpack Compose 作为主 UI
 ```text
 android/app/src/main/java/com/mkm/android/
 ├── data/
-│   ├── local/              Room、DataStore、本地仓库访问
+│   ├── local/              Room、DataStore、本地知识库访问
 │   ├── remote/             Retrofit API
 │   └── repository/         Repository 层
 ├── model/                  UI/Domain 数据模型
 ├── ui/
-│   ├── onboarding/         首次启动、仓库初始化
+│   ├── onboarding/         首次启动、知识库初始化
 │   ├── auth/               登录注册
-│   ├── markdown/           文档列表、目录、搜索
+│   ├── markdown/           文件夹树、文档列表、搜索、标签
 │   ├── document/           文档详情、编辑、预览
-│   ├── todo/               待办列表和详情
-│   ├── ai/                 AI 助手、Provider 设置
-│   ├── knowledge/          公开知识库
-│   └── profile/            我的、设置
+│   ├── todo/               待办列表和详情（日历入口进入）
+│   ├── ai/                 AI 助手、多会话、Provider 设置
+│   └── profile/            我的、同步、主题、渲染偏好
 └── util/                   通用工具
 ```
 
@@ -125,34 +129,63 @@ OnboardingActivity
 LoginActivity
 MainActivity
 ├── MarkdownFragment
-├── TodoFragment
 ├── AiAssistantFragment
-├── KnowledgeFragment
 └── ProfileFragment
+TodoActivity / TodoFragment
 DocumentDetailActivity
+DocumentEditActivity
 AiProviderSettingsActivity
+SyncSettingsActivity
+MarkdownRenderSettingsActivity
+ThemeSettingsActivity
 ```
 
 ---
 
-## 5.2 启动页规范
+## 5.2 主导航规范
 
-App 启动时不直接进入 LoginActivity。
-
-启动判断：
+MainActivity 使用悬浮底部 3 Tab：
 
 ```text
-已完成仓库初始化 → MainActivity
-未完成仓库初始化 → OnboardingActivity
+Markdown    AI    我的
 ```
 
-登录只在以下场景出现：
+要求：
 
 ```text
-开启云同步
-从账号恢复仓库
-未登录时评论/点赞
-我的页面主动登录
+底部导航为悬浮胶囊/卡片样式
+不使用 5 Tab
+AI 位于中间，可视觉强调
+Markdown 首页支持右滑抽屉
+```
+
+---
+
+## 5.3 Markdown Toolbar
+
+```text
+用户头像    搜索    日历    更多
+```
+
+| 操作 | 行为 |
+|---|---|
+| 用户头像 | 跳转我的页或展示账号入口 |
+| 搜索 | 搜索文件名、标签、正文内容 |
+| 日历 | 展示日历弹窗，弹窗内可跳转待办页 |
+| 更多 | 展示新建、导入、排序、视图切换等操作 |
+
+---
+
+## 5.4 右滑抽屉
+
+```text
+用户基本信息
+──────────────
+当前知识库信息
+新建知识库
+打开知识库（App 内 / 系统文件夹）
+切换知识库
+知识库设置
 ```
 
 ---
@@ -164,25 +197,32 @@ App 启动时不直接进入 LoginActivity。
 ```text
 欢迎页
     │
-    ├─ 创建新仓库
-    │       ├─ 开启云同步 → 登录/注册 → 设置仓库信息 → 主页
-    │       └─ 跳过同步 → 设置仓库信息 → 主页
+    ├─ 创建 App 内知识库
+    │       └─ 设置知识库名称 → 主页
     │
-    └─ 使用现有仓库
-            ├─ 打开本地仓库 → 选择目录 → 校验 → 主页
-            └─ 从账号恢复 → 登录/注册 → 选择云端仓库 → 主页
+    └─ 打开系统文件夹知识库
+            └─ 选择目录 → 校验权限 → 主页
+```
+
+登录只在以下场景出现：
+
+```text
+开启云同步
+从账号恢复同步数据
+使用 AI
+我的页面主动登录
 ```
 
 ---
 
 ## 6.2 存储位置
 
-Android 端必须支持两种仓库位置：
+Android 端必须支持两种知识库位置：
 
 | 位置 | 说明 | 技术建议 |
 |---|---|---|
-| 设备存储 | 其他应用可以访问 | Storage Access Framework，`ACTION_OPEN_DOCUMENT_TREE` |
-| 应用存储 | App 私有目录，卸载后删除 | `context.filesDir` |
+| App 内知识库 | App 私有目录，稳定安全 | `context.filesDir` |
+| 系统文件夹知识库 | 用户选择目录，其他应用可访问 | Storage Access Framework，`ACTION_OPEN_DOCUMENT_TREE` |
 
 ---
 
@@ -190,15 +230,19 @@ Android 端必须支持两种仓库位置：
 
 ## 7.1 Room 使用范围
 
-Room 用于本地缓存和离线展示：
+Room 用于本地缓存、离线展示和同步状态管理：
 
 ```text
 DocumentEntity
+FolderEntity
+TagEntity
+AttachmentEntity
 TodoEntity
 AiConversationEntity
 AiMessageEntity
 RepositoryEntity
 SyncStateEntity
+SyncLogEntity
 ```
 
 ---
@@ -211,16 +255,21 @@ DataStore 用于轻量配置：
 jwt_token
 current_repository_id
 theme_mode
-language
+custom_theme_color
+markdown_font_size
+markdown_font_family
+markdown_line_spacing
+code_highlight_enabled
+image_load_strategy
 last_sync_time
 has_completed_onboarding
 ```
 
 ---
 
-## 7.3 本地仓库文件访问
+## 7.3 系统文件夹访问
 
-设备存储模式下，必须通过 SAF 访问用户选择目录。
+系统文件夹知识库必须通过 SAF 访问用户选择目录。
 
 要求：
 
@@ -229,6 +278,7 @@ has_completed_onboarding
 处理目录权限失效
 处理文件被其他 App 修改
 处理文件删除或重命名
+删除前强提示风险
 ```
 
 ---
@@ -276,6 +326,8 @@ Content
 Empty
 Error
 Offline / Local mode
+Syncing
+Conflict
 ```
 
 页面原则：
@@ -286,6 +338,7 @@ Offline / Local mode
 操作中按钮 disabled
 错误用 Snackbar
 删除类操作支持确认或撤销
+同步冲突必须让用户选择保留本地或云端
 ```
 
 ---
@@ -307,14 +360,16 @@ Offline / Local mode
 行内代码
 表格
 链接
-图片（本地 assets）
+网络图片
+相对路径本地图片
+附件链接（PDF/ZIP/其他）
 ```
 
 ---
 
 ## 10.2 编辑
 
-编辑器使用 XML + EditText 实现。
+编辑器使用 XML + EditText 实现，底层仍然是 Markdown 源码。
 
 必须支持：
 
@@ -324,120 +379,187 @@ Offline / Local mode
 Markdown 正文输入
 保存按钮
 未保存退出确认
-Markdown 辅助工具栏
+预览/编辑模式切换
+Markdown 辅助工具栏（加粗、斜体、标题、列表、代码块、链接等）
 ```
 
 ---
 
-# 11. Todo 规范
+## 10.3 文件操作
 
-Todo 端必须支持：
+必须支持：
 
 ```text
-未完成 / 已完成 Tab
-新建待办 BottomSheet
-优先级：低 / 中 / 高
-截止时间
-备注
-来源文档跳转
-完成动画
-滑动删除 + 撤销
+新建文件
+新建文件夹
+重命名
+删除
+移动文件 / 文件夹
+复制文件 / 文件夹
+导入 .md 文件
+导出 .md 文件
+分享 .md 文件
+```
+
+删除策略：
+
+```text
+App 内知识库：进入 App 内回收站，可恢复/彻底删除
+系统文件夹知识库：删除前强提示风险
 ```
 
 ---
 
-# 12. AI 规范
+# 11. 搜索与标签规范
 
-## 12.1 AI 助手
+## 11.1 搜索范围
+
+```text
+文件名
+标签
+正文内容
+```
+
+## 11.2 标签能力
+
+```text
+创建标签
+给文档打标签
+按标签筛选文档列表
+```
+
+---
+
+# 12. 附件规范
+
+## 12.1 附件类型
+
+```text
+图片：网络图片 + 相对路径本地图片预览
+附件：PDF / ZIP / 其他文件作为附件显示和打开
+```
+
+## 12.2 同步限制
+
+```text
+同步 Markdown + 全部附件
+单文件最大 10MB
+超过 10MB 可保留本地引用，但提示暂不支持同步
+```
+
+## 12.3 引用策略
+
+```text
+本地 Markdown 原文保持相对路径
+本地渲染时按知识库目录解析相对路径
+云端/Web 渲染时由后端/API 把相对路径解析为附件下载地址
+```
+
+---
+
+# 13. Todo 规范
+
+Todo 不作为主 Tab，入口为：
+
+```text
+Markdown Toolbar → 日历弹窗 → 待办页
+```
+
+Todo 必须支持：
+
+```text
+标题
+备注
+日期
+优先级：低 / 中 / 高
+完成状态
+关联 Markdown 文档
+用户手动创建
+AI 提取创建
+完成 / 取消完成
+删除
+```
+
+---
+
+# 14. AI 规范
+
+## 14.1 AI 助手
 
 AI 助手页必须支持：
 
 ```text
+未登录空状态
 未配置 Provider 空状态
-空对话快捷操作
+多会话管理（新建/切换/删除）
+对话历史云端同步
 多轮对话
-历史对话
-模型切换
 AI 消息 Markdown 渲染
-复制 / 保存文档 / 提取待办
+复制 / 提取待办 / 生成 Markdown
+当前文档总结
 ```
 
 ---
 
-## 12.2 Provider 设置
+## 14.2 Provider 设置
+
+V1 只支持一个 OpenAI 兼容配置。
 
 Provider 设置页必须支持：
 
 ```text
-查看已配置模型
-添加模型
-选择预设
-自定义 Base URL
-填写 API Key
+Base URL
+API Key
+Model 名称
 测试连接
 保存配置
 删除配置
 脱敏显示 API Key
 ```
 
----
-
-# 13. Knowledge 规范
-
-公开知识库页必须支持：
-
-```text
-公开文档列表
-搜索
-标签筛选
-只读文档详情
-点赞
-评论
-AI 总结
-```
-
-未登录用户：
-
-```text
-可浏览公开文档
-可查看评论
-不可点赞
-不可评论
-```
+不做多 Provider 模板和多模型切换。
 
 ---
 
-# 14. Profile 规范
+# 15. Profile 规范
 
-我的页面必须分组：
+我的页面必须包含：
 
 ```text
-账号
-仓库
-AI
-外观
-其他
+账号：用户信息、修改昵称/头像、退出登录、账号注销
+AI：AI Key 配置
+同步：同步状态、全局同步开关、仅 Wi-Fi、冲突列表、失败重试、同步日志
+外观：浅色/深色/跟随系统、自定义主色调
+Markdown 渲染：字体大小、字体选择、代码块主题、行间距、语法高亮、图片加载策略
+其他：清理缓存、通知设置、关于
 ```
 
 未登录时：
 
 ```text
 显示登录入口
-仓库信息正常展示
+本地知识库正常展示
 本地功能正常可用
-```
-
-已登录时：
-
-```text
-显示用户信息
-显示同步状态
-可退出登录
+AI 和云同步显示登录引导
 ```
 
 ---
 
-# 15. 安全规范
+# 16. 同步规范
+
+```text
+每篇文档独立控制是否云端同步
+开启同步的文档有网时自动后台上传
+全局同步开关可暂停所有自动同步
+支持仅 Wi-Fi 同步
+冲突时弹窗让用户选择保留本地或云端
+失败可重试
+记录同步日志
+```
+
+---
+
+# 17. 安全规范
 
 Android 端必须遵守：
 
@@ -445,23 +567,26 @@ Android 端必须遵守：
 Token 使用 DataStore 保存
 不要保存完整 API Key
 不要日志打印 Token / API Key
-公开文档操作需明确用户确认
 删除文档需确认
-导出仓库需确认
+导出知识库需确认
+系统文件夹知识库删除需强提示风险
 ```
 
 ---
 
-# 16. Android 验收标准
+# 18. Android 验收标准
 
 V1 Android 端必须完成以下闭环：
 
 ```text
-首次启动 → 创建本地仓库 → 进入首页
-新建 Markdown → 编辑 → 保存 → 预览
-搜索文档 → 切换列表/宫格 → 筛选文档
-创建 Todo → 设置优先级 → 标记完成 → 删除撤销
-配置 DeepSeek API Key → AI 提问 → 保存为文档
-打开公开文档 → 评论 → 点赞
-我的页面 → 查看仓库 → 开启同步 → 登录
+首次启动 → 创建 App 内知识库 → 进入 Markdown 首页
+打开系统文件夹 → 展示文件夹树 → 打开 .md 文件
+新建 Markdown → 编辑工具栏 → 保存 → 预览
+搜索文件名/标签/正文 → 筛选文档
+新建文件夹 → 移动文档 → 删除进回收站 → 恢复
+配置 OpenAI-compatible API Key → AI 提问 → 切换历史会话
+打开文档 → AI 总结 → 提取待办
+Toolbar 日历 → 待办页 → 创建待办 → 标记完成
+我的页面 → 同步设置 → 冲突选择保留本地/云端
+主题设置 → 切换深色/浅色/自定义主色
 ```

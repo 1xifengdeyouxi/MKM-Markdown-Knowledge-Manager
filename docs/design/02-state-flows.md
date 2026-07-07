@@ -11,7 +11,7 @@
 ```text
 App 启动
     │
-    ├─ 已完成仓库初始化（本地标记存在）
+    ├─ 已完成知识库初始化（本地标记存在）
     │       │
     │       ├─ 无 Token（未登录）──→ MainActivity（本地模式）
     │       │
@@ -20,620 +20,407 @@ App 启动
     │                     ├─ 有效 ──→ MainActivity（已登录）
     │                     └─ 过期 ──→ 清除 Token → MainActivity（本地模式）
     │
-    └─ 未完成仓库初始化
+    └─ 未完成知识库初始化
             └─ OnboardingActivity
 ```
 
-核心变化：
+原则：
 
 ```text
-App 第一屏不再是 LoginActivity，而是判断是否完成仓库初始化。
-登录不是强制的，本地模式可以完整使用 App。
-Token 过期时不强制跳登录页，而是退为本地模式，允许继续使用。
+知识库初始化优先于登录
+登录不是使用 App 的前置条件
+Token 失效不能阻断本地功能
 ```
 
 ---
 
-# 3. OnboardingActivity 状态机
-
-## 3.1 欢迎页
-
-```text
-[欢迎页]
-    │
-    ├─ 点击创建新仓库 ──→ 同步选择页
-    └─ 点击使用现有仓库 ──→ 仓库来源选择页
-```
-
-## 3.2 同步选择页（创建新仓库路径）
-
-```text
-[同步选择页]
-    │
-    ├─ 点击开启云同步 ──→ LoginActivity（登录/注册）
-    │                           │
-    │                     ├─ 登录成功 ──→ 仓库信息设置页
-    │                     └─ 点击"暂不同步" ──→ 返回同步选择页，选本地
-    │
-    └─ 点击暂不启用同步 ──→ 仓库信息设置页
-```
-
-## 3.3 仓库来源选择页（使用现有仓库路径）
-
-```text
-[来源选择页]
-    │
-    ├─ 点击打开本地仓库
-    │       │
-    │       └─ 调用 ACTION_OPEN_DOCUMENT_TREE
-    │               │
-    │         ├─ 用户选择目录
-    │         │       ├─ 校验为 MKM 仓库 ──→ 导入仓库 → MainActivity
-    │         │       └─ 不是 MKM 仓库 ──→ Snackbar 提示 → 返回选择
-    │         └─ 用户取消 ──→ 返回来源选择页
-    │
-    └─ 点击从账号恢复 ──→ LoginActivity
-                                │
-                          ├─ 登录成功
-                          │       └─ 请求云端仓库列表
-                          │               ├─ 有仓库 ──→ 选择仓库 → 同步 → MainActivity
-                          │               └─ 无仓库 ──→ 引导创建新仓库 → 仓库信息设置页
-                          └─ 点击"暂不同步" ──→ 返回来源选择页
-```
-
-## 3.4 仓库信息设置页
-
-```text
-[仓库信息设置页]
-    │
-    └─ 输入仓库名称 + 选择存储位置
-            │
-        ─ 点击"创建仓库"
-            │
-        ─ 校验名称
-            │
-          ├─ 名称为空 ──→ 输入框错误提示
-          ├─ 名称含非法字符 ──→ 输入框错误提示
-          └─ 校验通过 ──→ [创建中]
-                              │
-                        ├─ 成功 ──→ 写入本地初始化标记 → MainActivity
-                        ├─ 无权限 ──→ Snackbar "无法访问该目录，请重新选择"
-                        └─ 其他失败 ──→ Snackbar 错误 + 重试
-```
-
----
-
-# 4. LoginActivity 状态机
-
-LoginActivity 不再是 App 启动的第一屏，只在以下场景出现：
-
-```text
-Onboarding 选择开启云同步
-Onboarding 从账号恢复仓库
-ProfileFragment 点击"登录 / 注册"
-```
-
-```text
-[初始状态]
-    │
-    ├─ 点击登录
-    │      │
-    │      ├─ 字段校验失败 ──→ 输入框错误提示
-    │      └─ 校验通过 ──→ [加载中]
-    │                          │
-    │                    ├─ 成功 ──→ 保存 Token → 返回调用方（Onboarding 或 Profile）
-    │                    └─ 失败 ──→ Snackbar 错误 → [初始状态]
-    │
-    ├─ 点击注册（逻辑同上）
-    │
-    └─ 点击"暂不同步，继续本地使用"
-            └─ 退出登录页，返回 Onboarding 的上一步
-```
-
----
-
-# 5. MarkdownFragment 状态机
-
-```text
-[进入页面]
-    │
-    ├─ 读取本地仓库文档缓存 ──→ 立即展示
-    │
-    └─ 若已登录，请求后端同步
-            │
-      ├─ 成功 ──→ 更新缓存 → 刷新列表
-      └─ 失败
-              │
-        ├─ 有缓存 ──→ Snackbar "同步失败，显示本地数据"
-        └─ 无缓存 ──→ 空状态 + 重试按钮
-
-[Tab 切换]
-    │
-    ├─ 最近 Tab ──→ 展示最近更新文档列表
-    └─ 目录 Tab ──→ 展示仓库目录树
-
-[用户操作]
-    │
-    ├─ 点击文档 ──→ DocumentDetailActivity（预览模式）
-    ├─ 点击 FAB ──→ DocumentDetailActivity（新建模式）
-    ├─ 长按文档 ──→ 弹出菜单（编辑/删除/重命名/设为公开/移动到目录）
-    ├─ 点击搜索图标 ──→ Toolbar 进入搜索状态
-    ├─ 点击列表设置 ──→ 底部弹出排序/筛选/视图切换 BottomSheet
-    └─ 下拉刷新 ──→ 触发同步（已登录）或重新扫描仓库目录（本地模式）
-```
-
----
-
-# 6. DocumentDetailActivity 状态机
-
-## 6.1 新建模式
-
-```text
-[进入新建模式]
-    │
-    └─ 展示空标题 + 空标签行 + 空内容编辑器 + Markdown 辅助工具栏
-            │
-      ─ 输入标题和内容
-            │
-      ─ 点击保存
-            │
-        ├─ 标题为空 ──→ 输入框错误提示
-        └─ 校验通过 ──→ [保存中]
-                            │
-                      ├─ 成功 ──→ 切换到预览模式（当前文档）
-                      └─ 失败 ──→ Snackbar 错误 → 保持编辑模式
-```
-
-## 6.2 预览模式
-
-```text
-[进入预览模式]
-    │
-    └─ 加载文档详情 → Markwon 渲染
-            │
-      ─ 点击编辑 ──→ 切换到编辑模式（当前内容填入输入框）
-      ─ 点击 AI 总结 ──→ AI 总结 BottomSheet（见 6.4）
-      ─ 点击提取待办 ──→ 待办提取 BottomSheet（见 6.5）
-      ─ 点击更多菜单 [⋮]
-              │
-          ├─ 编辑标签 ──→ 标签输入弹窗
-          ├─ 设为公开/私有 ──→ 调用 API → 更新文档状态
-          ├─ 分享 ──→ 系统分享面板
-          ├─ 导出 Markdown ──→ 系统文件保存
-          ├─ 查看属性 ──→ 弹出属性 BottomSheet
-          └─ 删除文档 ──→ 确认 Dialog → 删除 → 返回列表
-```
-
-## 6.3 编辑模式
-
-```text
-[进入编辑模式]
-    │
-    └─ 加载当前文档内容到输入框 + 标签行 + Markdown 辅助工具栏
-            │
-      ─ 点击保存
-            │
-        ├─ 标题为空 ──→ 输入框错误提示
-        └─ 校验通过 ──→ [保存中]
-                            │
-                      ├─ 成功 ──→ Snackbar "已保存" → 切换到预览模式
-                      └─ 失败 ──→ Snackbar 错误 → 保持编辑模式
-
-[退出编辑模式（返回键）]
-    │
-    ├─ 内容无修改 ──→ 直接退出
-    └─ 内容有修改 ──→ Dialog "是否保存更改？"
-                            │
-                      ├─ 保存 ──→ 执行保存 → 退出
-                      ├─ 放弃 ──→ 丢弃修改 → 退出
-                      └─ 取消 ──→ 继续编辑
-```
-
-## 6.4 AI 总结 BottomSheet 状态机
-
-```text
-[触发 AI 总结]
-    │
-    └─ 弹出 BottomSheet
-            │
-      ─ [加载中动画]
-            │
-        ├─ 成功 ──→ Markdown 渲染总结内容
-        │               │
-        │         ├─ 复制 ──→ 复制到剪贴板 + Toast
-        │         ├─ 保存为文档 ──→ POST /api/documents → Snackbar 成功提示
-        │         └─ 提取待办 ──→ 关闭当前 BottomSheet → 待办提取 BottomSheet（6.5）
-        │
-        └─ 失败 ──→ 显示错误信息 + [重试]
-```
-
-## 6.5 待办提取 BottomSheet 状态机
-
-```text
-[触发提取待办]
-    │
-    └─ 弹出 BottomSheet
-            │
-      ─ [AI 加载中]
-            │
-        ├─ 成功 ──→ 展示 AI 返回的待办草稿（带 CheckBox）
-        │               │
-        │         ─ 用户勾选/取消勾选
-        │               │
-        │         ─ 点击"保存选中"
-        │               │
-        │               └─ POST /api/todos/batch
-        │                           │
-        │                     ├─ 成功 ──→ Snackbar "已添加 N 条待办 [去查看]" → 关闭
-        │                     └─ 失败 ──→ Snackbar 错误
-        │
-        └─ 失败 ──→ 显示错误信息 + [重试]
-```
-
----
-
-# 7. TodoFragment 状态机
-
-```text
-[进入页面]
-    │
-    └─ 请求 GET /api/todos（已登录）或读取本地待办（本地模式）
-            │
-        ├─ 成功 ──→ 分 Tab 展示未完成/已完成
-        └─ 失败 ──→ 空状态 + 重试
-
-[Tab 切换]
-    │
-    ├─ 未完成 Tab ──→ 展示未完成待办列表
-    └─ 已完成 Tab ──→ 展示已完成待办列表
-
-[用户操作]
-    │
-    ├─ 点击圆圈 ──→ PUT /api/todos/{id}/complete 或 uncomplete
-    │                    │
-    │               ├─ 成功 ──→ 划线动画 + 移至对应 Tab
-    │               └─ 失败 ──→ Snackbar 错误 + 恢复状态
-    │
-    ├─ 点击待办行 ──→ 展开详情 BottomSheet
-    │                    │
-    │               ─ 点击来源文档 ──→ 跳转 DocumentDetailActivity
-    │               ─ 点击编辑 ──→ 进入编辑状态
-    │               ─ 点击删除 ──→ 确认 Dialog → DELETE /api/todos/{id}
-    │
-    ├─ 点击 FAB ──→ 新建待办 BottomSheet
-    │                    │
-    │               ─ 输入内容 + 优先级 + 截止时间（可选）+ 备注（可选）
-    │               ─ 点击保存 ──→ POST /api/todos
-    │                    │
-    │               ├─ 成功 ──→ 插入未完成列表顶部 + 关闭弹窗
-    │               └─ 失败 ──→ Snackbar 错误
-    │
-    └─ 滑动删除
-            │
-        ─ 乐观 UI：立即移除列表项 + Snackbar "已删除 [撤销]"（5秒）
-            │
-        ├─ 用户点撤销（5秒内）──→ 取消删除请求 + 重新插入列表
-        └─ Snackbar 超时 ──→ 执行 DELETE /api/todos/{id}
-                                    │
-                              └─ 失败 ──→ Snackbar 错误 + 重新插入列表
-```
-
----
-
-# 8. AiAssistantFragment 状态机
-
-```text
-[进入页面]
-    │
-    ├─ 检查 Provider 配置
-    │       │
-    │  ├─ 无配置 ──→ 展示空状态（引导配置 API Key）
-    │  └─ 有配置 ──→ 检查当前对话历史
-    │                   │
-    │              ├─ 有历史 ──→ 展示历史消息列表
-    │              └─ 无历史 ──→ 展示快捷操作卡片
-    │
-    └─ 对话中
-            │
-        ─ 用户输入并发送
-            │
-        ─ 输入框 disabled + 发送按钮 disabled
-            │
-        ─ 消息列表加入 typing 动画气泡
-            │
-        ─ POST /api/ai/chat
-            │
-        ├─ 成功 ──→ 移除 typing 动画 + 渲染 AI 消息气泡
-        │               │
-        │         ─ 快捷操作：[复制] [保存文档] [提取待办]
-        │
-        └─ 失败
-                │
-          ├─ Provider 无效 ──→ 消息气泡内显示错误 + "模型配置有误 [去检查]"
-          ├─ 网络超时 ──→ 消息气泡内显示 "请求超时 [重试]"
-          └─ 其他错误 ──→ Snackbar 提示
-
-[新建对话]
-    │
-    └─ 点击 Toolbar [+] ──→ 保存当前对话到历史 → 清空消息列表 → 展示快捷操作
-
-[切换历史对话]
-    │
-    └─ 点击更多菜单 ──→ 历史对话列表 BottomSheet
-            │
-        ─ 点击某条历史 ──→ 加载历史消息 → 展示历史对话
-```
-
-## 8.1 快捷操作弹窗状态机
-
-```text
-[触发快捷操作]
-    │
-    ├─ 生成 Markdown
-    │       └─ 弹出主题输入框 Dialog
-    │               ─ 用户输入 → 确认
-    │               └─ 发送 POST /api/ai/markdown/generate → 同普通发送流程
-    │
-    ├─ 提取待办
-    │       └─ 弹出文本输入框 Dialog（粘贴文本或输入主题）
-    │               ─ 用户输入 → 确认
-    │               └─ AI 返回待办草稿 → 进入待办提取 BottomSheet
-    │
-    ├─ 代码解释
-    │       └─ 弹出多行代码输入框 Dialog
-    │               ─ 用户粘贴代码 → 确认
-    │               └─ 发送 POST /api/ai/chat → 同普通发送流程
-    │
-    └─ 技术笔记
-            └─ 弹出主题输入框 Dialog
-                    ─ 用户输入 → 确认
-                    └─ 发送 POST /api/ai/markdown/generate → 同普通发送流程
-```
-
----
-
-# 9. KnowledgeFragment 状态机
-
-```text
-[进入页面]
-    │
-    └─ 请求 GET /api/documents/public
-            │
-        ├─ 成功 ──→ 展示公开文档列表 + 标签筛选栏
-        └─ 失败 ──→ 空状态 + Snackbar + 重试
-
-[用户操作]
-    │
-    ├─ 点击搜索 ──→ Toolbar 搜索模式
-    │               ─ 输入关键词 ──→ GET /api/documents/public?q=xxx
-    │
-    ├─ 点击标签筛选 ──→ GET /api/documents/public?tag=kotlin
-    │
-    └─ 点击文档卡片 ──→ 只读文档详情页
-                            │
-                      ─ 点击 AI 总结 ──→ AI 总结 BottomSheet
-                      ─ 点击点赞
-                      │       │
-                      │  ├─ 未登录 ──→ Snackbar "登录后才能点赞"
-                      │  └─ 已登录 ──→ POST /api/documents/{id}/like → 数字更新
-                      │
-                      ─ 发表评论
-                              │
-                        ├─ 未登录 ──→ 显示"登录后才能评论 [去登录]"
-                        └─ 已登录 ──→ POST /api/documents/{id}/comments
-                                            │
-                                      ├─ 成功 ──→ 插入评论列表顶部
-                                      └─ 失败 ──→ Snackbar 错误
-```
-
----
-
-# 10. ProfileFragment 状态机
-
-```text
-[进入页面]
-    │
-    ├─ 检查登录状态
-    │       │
-    │  ├─ 未登录 ──→ 账号区显示登录入口，仓库/AI/外观功能正常展示
-    │  └─ 已登录 ──→ 账号区展示头像 + 用户名 + 邮箱
-
-[用户操作]
-    │
-    ├─ 点击登录入口（未登录状态）──→ LoginActivity
-    │                                   │
-    │                             └─ 登录成功 ──→ 返回 ProfileFragment 刷新账号区
-    │
-    ├─ 点击当前仓库 ──→ 仓库详情页
-    │
-    ├─ 点击同步状态
-    │       │
-    │  ├─ 未登录 ──→ 显示"当前本地模式" + [开启云同步]
-    │  └─ 已登录 ──→ 展示同步详情 + [立即同步] + [关闭云同步]
-    │
-    ├─ 点击 AI 模型配置 ──→ AiProviderSettingsActivity
-    │
-    ├─ 点击主题 ──→ 主题选择 BottomSheet → 立即生效
-    │
-    ├─ 点击语言 ──→ 语言选择 BottomSheet → 重启 App 生效（或即时生效）
-    │
-    ├─ 点击导出仓库 ──→ 导出确认 Dialog
-    │                       │
-    │                 └─ 确认 ──→ 打包 ZIP → 系统分享/文件保存
-    │
-    └─ 点击退出登录
-            │
-        ─ 确认 Dialog
-            │
-        ─ 清除 Token
-            │
-        ─ ProfileFragment 账号区切换为"未登录"状态
-            （不清除本地仓库数据，不强制跳登录页）
-```
-
----
-
-# 11. AiProviderSettingsActivity 状态机
-
-```text
-[进入页面]
-    │
-    └─ GET /api/ai/providers
-            │
-        ├─ 空 ──→ 空状态 + 引导添加
-        └─ 有 ──→ 展示配置列表
-
-[添加 Provider]
-    │
-    └─ 点击"添加模型"
-            │
-        ─ 展示添加表单
-                │
-        ─ 点击预设 ──→ 自动填充 baseUrl 和 modelName
-                │
-        ─ 填写 API Key
-                │
-        ─ 点击"测试连接"
-                │
-            POST /api/ai/providers/test
-                │
-          ├─ 成功 ──→ 显示"✅ 连接成功（耗时 1200ms）"
-          └─ 失败 ──→ 显示"❌ 失败：Invalid API key"
-                │
-        ─ 点击保存 ──→ POST /api/ai/providers
-                │
-          ├─ 成功 ──→ 返回列表 + 刷新
-          └─ 失败 ──→ Snackbar 错误
-
-[删除 Provider]
-    │
-    └─ 点击删除 ──→ 确认 Dialog
-                        │
-                  └─ 确认 ──→ DELETE /api/ai/providers/{id}
-                                    │
-                              ├─ 成功 ──→ 从列表移除
-                              └─ 失败 ──→ Snackbar 错误
-```
-
----
-
-# 12. 全局 Token 过期处理
-
-Token 过期策略调整：
-
-```text
-旧策略：过期 → 强制跳 LoginActivity
-新策略：过期 → 清除 Token → 退为本地模式 → 弹 Snackbar "登录已过期" [重新登录]
-```
-
-在 Retrofit 的 Response Interceptor 中统一拦截 401：
-
-```text
-收到 HTTP 401
-    │
-    └─ 清除本地 Token
-            │
-        ─ Snackbar 提示 "登录已过期 [重新登录]"（全局）
-                │
-        ─ 用户点"重新登录" ──→ 跳转 LoginActivity
-        ─ 用户不点 ──→ App 继续运行（降级为本地模式）
-```
-
-只有在用户主动点击"重新登录"时才跳转登录页。
-
----
-
-# 13. 网络状态处理
-
-## 13.1 有本地缓存的页面
-
-```text
-文档列表（MarkdownFragment）
-
-进入页面 → 立即展示本地缓存 → 若已登录，后台请求同步 → 成功后静默刷新列表
-```
-
-## 13.2 无缓存的页面
-
-```text
-AI 聊天历史、待办（纯云端）、Provider 设置
-
-加载中 ──→ 成功/失败
-失败 ──→ 空状态 + Snackbar "加载失败 [重试]"
-```
-
-## 13.3 操作失败后的 Undo
-
-待办滑动删除：
-
-```text
-滑动删除
-    │
-    └─ 乐观 UI：立即移除列表项 + Snackbar "已删除 [撤销]"（5秒）
-            │
-        ├─ 用户 5 秒内点撤销 ──→ 取消请求 + 重新插入列表
-        └─ 5 秒超时 ──→ 执行 DELETE 请求
-                                │
-                          └─ 失败 ──→ Snackbar 错误 + 重新插入
-```
-
----
-
-# 14. 全局导航关系图
+# 3. Onboarding 状态流
 
 ```text
 OnboardingActivity
-    └──→ LoginActivity（开启同步 / 从账号恢复）
-    └──→ MainActivity
+    │
+    ├─ 创建 App 内知识库
+    │       ├─ 输入知识库名称
+    │       ├─ 创建私有目录
+    │       └─ 保存 current_repository_id → MainActivity
+    │
+    ├─ 打开系统文件夹知识库
+    │       ├─ 调用 ACTION_OPEN_DOCUMENT_TREE
+    │       ├─ 获取 persistableUriPermission
+    │       ├─ 扫描 .md 文件
+    │       └─ 保存 repository → MainActivity
+    │
+    └─ 登录同步已有数据
+            └─ LoginActivity
+```
 
-LoginActivity
-    └──→ 返回调用方（Onboarding / Profile）
+异常状态：
 
-MainActivity
-    ├── MarkdownFragment（默认）
-    │       └──→ DocumentDetailActivity（预览/编辑/新建）
-    │
-    ├── TodoFragment
-    │
-    ├── AiAssistantFragment
-    │       └──→ AiProviderSettingsActivity（未配置时）
-    │       └──→ DocumentDetailActivity（保存生成文档）
-    │
-    ├── KnowledgeFragment
-    │       └──→ 只读 DocumentDetailActivity
-    │
-    └── ProfileFragment
-            └──→ LoginActivity（未登录时）
-            └──→ AiProviderSettingsActivity
+```text
+目录权限被拒绝 → 回到选择页并提示
+目录为空 → 允许进入，显示空知识库
+扫描失败 → 提示错误，可重试
 ```
 
 ---
 
-# 15. 当前结论
-
-MKM Android V1 状态流转规范（更新版）。
-
-核心设计原则：
+# 4. MainActivity 导航状态
 
 ```text
-仓库初始化是第一步，登录是可选的
-Token 过期不强制跳登录，降级为本地模式
-本地缓存优先，后台静默同步
-乐观 UI + Undo：删除操作先移除，支持 5 秒内撤销
-操作中 disabled 防重复提交
-失败用 Snackbar 提示，不清空已有数据
-AI 操作结果优先用 BottomSheet 展示
+MainActivity
+    │
+    ├─ Markdown Tab
+    ├─ AI Tab
+    └─ 我的 Tab
 ```
 
-关键 Android 组件对应关系：
+底部导航状态：
 
 ```text
-BottomSheet → AI 总结、待办提取、新建待办、列表设置、模型切换
-Dialog → 确认删除、未保存提示、导出确认
-Snackbar → 操作反馈、错误提示、撤销入口
-LinearProgressIndicator → 页面初始加载
-CircularProgressIndicator → 局部操作加载
-SwipeRefreshLayout → 下拉同步刷新
-RecyclerView ItemTouchHelper → 滑动删除待办
-ACTION_OPEN_DOCUMENT_TREE → 仓库目录选择
+Markdown selected
+AI selected
+Profile selected
+```
+
+待办不是 Tab：
+
+```text
+Markdown Toolbar 日历 → Calendar Popup → TodoActivity
+```
+
+---
+
+# 5. Markdown 页面状态机
+
+```text
+MarkdownFragment
+    │
+    ├─ Loading
+    │     └─ 读取 Room / 文件系统
+    │
+    ├─ Empty
+    │     ├─ 新建 Markdown
+    │     ├─ 新建文件夹
+    │     └─ 导入 .md
+    │
+    ├─ Content
+    │     ├─ 文件夹树
+    │     ├─ 卡片视图
+    │     └─ 列表视图
+    │
+    ├─ Search
+    │     └─ 文件名 + 标签 + 正文搜索
+    │
+    ├─ Syncing
+    │     └─ 展示同步状态，不阻塞本地编辑
+    │
+    ├─ Conflict
+    │     └─ 提示进入冲突处理
+    │
+    └─ Error
+          └─ Snackbar + 重试
+```
+
+---
+
+# 6. 文件操作状态流
+
+## 6.1 新建文件
+
+```text
+点击新建文件
+    │
+    ├─ 当前有选中文件夹 → 默认 folderPath = 当前文件夹
+    └─ 无选中文件夹 → 默认 folderPath = /
+            │
+            └─ DocumentEditActivity → 保存 → 返回 MarkdownFragment
+```
+
+---
+
+## 6.2 删除文件
+
+```text
+点击删除
+    │
+    ├─ App 内知识库
+    │       ├─ 确认删除
+    │       └─ 移入 App 回收站
+    │
+    └─ 系统文件夹知识库
+            ├─ 强提示风险
+            ├─ 用户确认
+            └─ 删除真实文件
+```
+
+---
+
+## 6.3 移动 / 复制
+
+```text
+长按文件或文件夹
+    │
+    ├─ 选择移动 / 复制
+    ├─ 选择目标文件夹
+    └─ 执行操作 → 刷新文件夹树
+```
+
+---
+
+# 7. Document 详情与编辑状态流
+
+## 7.1 查看文档
+
+```text
+DocumentDetailActivity
+    │
+    ├─ Loading
+    ├─ Render Markdown
+    ├─ 展示图片 / 附件
+    └─ 显示同步状态
+```
+
+## 7.2 编辑文档
+
+```text
+点击编辑
+    │
+    └─ DocumentEditActivity
+            │
+            ├─ 修改标题 / 文件名 / 标签 / 正文
+            ├─ 使用 Markdown 工具栏
+            ├─ 保存
+            │     ├─ 本地保存成功 → 返回详情
+            │     └─ 本地保存失败 → 保留内容并提示
+            └─ 退出
+                  ├─ 无修改 → 返回
+                  └─ 有未保存修改 → 弹窗确认
+```
+
+---
+
+# 8. 同步状态流
+
+## 8.1 文档同步状态
+
+```text
+仅本地
+    │
+    ├─ 用户开启云端同步
+    │       └─ 待同步
+    │
+待同步
+    │
+    ├─ 有网 + 登录 + 全局同步开启
+    │       └─ 同步中
+    │
+同步中
+    │
+    ├─ 上传成功 → 已同步
+    ├─ 网络失败 → 同步失败
+    ├─ Token 失效 → 登录过期 / 本地模式
+    └─ 云端版本冲突 → 冲突
+
+冲突
+    │
+    ├─ 保留本地 → 覆盖云端 → 已同步
+    ├─ 保留云端 → 覆盖本地 → 已同步
+    └─ 稍后处理 → 保持冲突状态
+```
+
+---
+
+## 8.2 全局同步设置
+
+```text
+同步设置
+    │
+    ├─ 全局同步开关 OFF → 暂停所有自动同步
+    ├─ 全局同步开关 ON
+    │       ├─ 仅 Wi-Fi ON → Wi-Fi 下同步
+    │       └─ 仅 Wi-Fi OFF → 任意网络同步
+    ├─ 冲突列表 → 逐条处理
+    ├─ 失败列表 → 重试
+    └─ 同步日志 → 查看记录
+```
+
+---
+
+# 9. 附件状态流
+
+```text
+Markdown 渲染遇到图片/附件相对路径
+    │
+    ├─ App 内知识库 / 系统文件夹知识库
+    │       └─ 按本地相对路径解析并展示
+    │
+    └─ 云端/Web 同步文档
+            └─ 调用后端 resolve API 获取附件下载地址
+```
+
+上传附件：
+
+```text
+选择附件
+    │
+    ├─ 文件 ≤ 10MB → 上传并记录 relativePath
+    └─ 文件 > 10MB → 提示暂不支持同步，保留本地引用
+```
+
+---
+
+# 10. Todo 状态流
+
+```text
+Markdown Toolbar 点击日历
+    │
+    └─ 日历弹窗
+            │
+            ├─ 展示当天待办摘要
+            ├─ 点击待办 → TodoActivity
+            └─ 点击新增 → 新建 Todo
+```
+
+TodoActivity：
+
+```text
+Todo 列表
+    │
+    ├─ 新建 Todo
+    ├─ 编辑 Todo
+    ├─ 标记完成 / 取消完成
+    ├─ 删除 Todo
+    └─ 点击关联文档 → DocumentDetailActivity
+```
+
+AI 提取待办：
+
+```text
+AI 回复 / 文档总结
+    │
+    ├─ 提取待办草稿
+    ├─ 用户确认 / 编辑
+    └─ 保存到 Todo 列表
+```
+
+---
+
+# 11. AI 状态机
+
+```text
+进入 AI Tab
+    │
+    ├─ 未登录
+    │       └─ 显示登录引导
+    │
+    ├─ 已登录但未配置 Provider
+    │       └─ 显示配置 AI Key 引导
+    │
+    └─ 已登录且已配置 Provider
+            └─ 展示会话列表 / 当前会话
+```
+
+会话状态：
+
+```text
+无会话
+    └─ 新建会话
+
+有会话
+    ├─ 切换会话
+    ├─ 删除会话
+    ├─ 发送消息
+    │     ├─ Loading
+    │     ├─ 成功 → 保存 user/assistant 消息到云端
+    │     └─ 失败 → 显示错误，可重试
+    └─ 复制 / 提取待办 / 生成 Markdown
+```
+
+---
+
+# 12. Profile 状态流
+
+```text
+ProfileFragment
+    │
+    ├─ 未登录
+    │       ├─ 显示本地模式说明
+    │       └─ 登录入口
+    │
+    └─ 已登录
+            ├─ 用户信息
+            ├─ 修改昵称 / 头像
+            ├─ AI Key 配置
+            ├─ 同步设置
+            ├─ 主题设置
+            ├─ Markdown 渲染偏好
+            ├─ 清理缓存
+            ├─ 通知设置
+            ├─ 关于
+            ├─ 退出登录
+            └─ 账号注销
+```
+
+退出登录：
+
+```text
+点击退出登录
+    │
+    ├─ 确认
+    ├─ 清除 Token
+    └─ 回到本地模式，不删除本地知识库
+```
+
+账号注销：
+
+```text
+点击账号注销
+    │
+    ├─ 强确认
+    ├─ 请求后端注销
+    ├─ 清除 Token
+    └─ 保留本地知识库，云端数据按后端策略删除
+```
+
+---
+
+# 13. 401 状态处理
+
+```text
+任何 API 返回 401
+    │
+    ├─ 清除本地 Token
+    ├─ 展示 Snackbar：登录已过期
+    ├─ AI / 云同步暂停
+    └─ App 继续本地模式
+```
+
+不得强制用户离开当前页面。
+
+---
+
+# 14. 网络异常状态处理
+
+```text
+网络失败
+    │
+    ├─ Markdown 本地数据继续可用
+    ├─ Todo 本地数据继续可用
+    ├─ 同步任务进入失败队列
+    ├─ AI 请求显示失败，可重试
+    └─ Web 端显示网络错误
+```
+
+---
+
+# 15. 关键验收状态
+
+```text
+未登录也能进入 MainActivity 并管理本地知识库
+Token 过期后不影响本地阅读和编辑
+同步失败不丢本地改动
+冲突必须等待用户选择，不自动覆盖
+系统文件夹删除必须强提示
+AI 未配置 Key 时不能发送请求
+附件超过 10MB 时必须提示并阻止云端上传
 ```

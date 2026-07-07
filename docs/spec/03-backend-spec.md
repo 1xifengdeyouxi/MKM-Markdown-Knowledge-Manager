@@ -12,20 +12,21 @@ Backend 是 MKM 的云端数据和服务层，负责：
 
 ```text
 用户账号注册登录
-文档云存储与同步
+文档云存储与同步（含文件夹结构）
+附件二进制存储（≤10MB）
 Todo 云端存储
-公开知识库服务
-评论和点赞
 AI Provider 配置管理
 AI 请求代理转发
+AI 多会话历史云端存储
 ```
 
 Backend 不负责：
 
 ```text
-本地仓库管理（由 Android 客户端负责）
+本地知识库管理（由 Android 客户端负责）
 Markdown 渲染（由客户端负责）
 AI 模型直接训练或本地部署
+社区评论/点赞（V1 不做）
 ```
 
 ---
@@ -100,6 +101,7 @@ backend/src/main/kotlin/com/mkm/
 ├── controller/
 │   ├── AuthController.kt
 │   ├── DocumentController.kt
+│   ├── AttachmentController.kt
 │   ├── TodoController.kt
 │   ├── AiController.kt
 │   ├── UserController.kt
@@ -107,22 +109,30 @@ backend/src/main/kotlin/com/mkm/
 ├── service/
 │   ├── UserService.kt
 │   ├── DocumentService.kt
+│   ├── AttachmentService.kt
 │   ├── TodoService.kt
 │   ├── AiProviderService.kt
 │   └── AiService.kt
 ├── repository/
 │   ├── UserRepository.kt
 │   ├── DocumentRepository.kt
+│   ├── AttachmentRepository.kt
 │   ├── TodoRepository.kt
-│   └── AiProviderConfigRepository.kt
+│   ├── AiProviderConfigRepository.kt
+│   ├── AiConversationRepository.kt
+│   └── AiMessageRepository.kt
 ├── model/
 │   ├── User.kt
 │   ├── Document.kt
+│   ├── Attachment.kt
 │   ├── Todo.kt
-│   └── AiProviderConfig.kt
+│   ├── AiProviderConfig.kt
+│   ├── AiConversation.kt
+│   └── AiMessage.kt
 ├── dto/
 │   ├── AuthDtos.kt
 │   ├── DocumentDtos.kt
+│   ├── AttachmentDtos.kt
 │   ├── TodoDtos.kt
 │   └── AiDtos.kt
 ├── security/
@@ -146,25 +156,25 @@ backend/src/main/kotlin/com/mkm/
 ## 5.2 建表原则
 
 ```text
-主键：UUID 或 BIGINT GENERATED ALWAYS AS IDENTITY
-时间字段：timestamptz（带时区）
-软删除：V1 可以先用物理删除
+主键：BIGSERIAL（自增 BIGINT）
+时间字段：TIMESTAMP
+软删除：V1 使用物理删除
 禁止保存明文密码
 禁止保存明文 API Key
+附件数据使用 BYTEA 存储
 ```
 
 ## 5.3 核心数据表
 
 ```text
 users
-documents
+documents           含文件夹路径、同步状态、本地修改时间
+attachments         附件二进制（≤10MB）
 todos
 ai_provider_configs
 ai_conversations
 ai_messages
 ai_call_logs
-comments
-likes
 ```
 
 ---
@@ -177,21 +187,6 @@ likes
 所有 API 以 /api 开头
 资源命名使用复数名词
 嵌套资源最多两层
-```
-
-示例：
-
-```text
-/api/auth/register
-/api/auth/login
-/api/documents
-/api/documents/{id}
-/api/documents/public
-/api/todos
-/api/todos/{id}
-/api/ai/providers
-/api/ai/chat
-/api/users/me
 ```
 
 ---
@@ -223,6 +218,7 @@ HTTP 状态码含义：
 | 403 | 无权限 |
 | 404 | 资源不存在 |
 | 409 | 冲突（如用户名已存在） |
+| 413 | 附件超过 10MB |
 | 500 | 服务器内部错误 |
 
 错误响应格式：
@@ -243,9 +239,6 @@ HTTP 状态码含义：
 ```text
 POST /api/auth/register
 POST /api/auth/login
-GET  /api/documents/public
-GET  /api/documents/public/{id}
-GET  /api/documents/{id}/comments
 ```
 
 Token 格式：
@@ -262,12 +255,13 @@ Authorization: Bearer <jwt_token>
 
 ```text
 文档：只有 owner 可以增删改
+附件：只有 owner 可以增删改
 Todo：只有 owner 可以增删改
 AI Provider 配置：只有 owner 可以增删改
-评论：只有评论作者可以删除
-公开文档：所有人可读
-私有文档：仅 owner 可读
+AI 会话/消息：只有 owner 可以增删改
 ```
+
+V1 不做公开文档、社区权限。
 
 ---
 
@@ -281,7 +275,7 @@ AI Provider 配置：只有 owner 可以增删改
 
 ```text
 用户名唯一
-邮箱唯一
+邮箱唯一（可选）
 密码 BCrypt 加密存储
 注册成功返回 JWT Token
 ```
@@ -303,15 +297,15 @@ AI Provider 配置：只有 owner 可以增删改
 
 ---
 
-## 8.3 获取当前用户
+## 8.3 获取/更新当前用户
 
-接口：`GET /api/users/me`
+接口：`GET /api/users/me`、`PATCH /api/users/me`
 
 要求：
 
 ```text
-返回当前登录用户信息
-不返回密码字段
+获取：返回当前登录用户信息，不返回密码字段
+更新：支持修改 nickname、avatar_url
 ```
 
 ---
@@ -323,12 +317,11 @@ AI Provider 配置：只有 owner 可以增删改
 必须实现：
 
 ```text
-GET    /api/documents         获取当前用户文档列表
-POST   /api/documents         创建文档
-GET    /api/documents/{id}    获取文档详情
-PUT    /api/documents/{id}    更新文档
-DELETE /api/documents/{id}    删除文档
-GET    /api/documents/public  获取公开文档列表
+GET    /api/documents               获取当前用户文档列表（支持搜索/标签筛选/文件夹路径筛选）
+POST   /api/documents               创建文档
+GET    /api/documents/{id}          获取文档详情
+PUT    /api/documents/{id}          更新文档
+DELETE /api/documents/{id}          删除文档
 ```
 
 ---
@@ -339,8 +332,11 @@ GET    /api/documents/public  获取公开文档列表
 id
 title
 content（TEXT，允许大文本）
-isPublic
-tags（数组，存储为 JSON 或 TEXT）
+folderPath（文件夹路径）
+fileName
+tags（逗号分隔字符串）
+syncEnabled（是否开启云端同步）
+localUpdatedAt（本地修改时间，用于冲突检测）
 ownerId
 createdAt
 updatedAt
@@ -348,22 +344,60 @@ updatedAt
 
 ---
 
-## 9.3 文档排序与分页
+## 9.3 冲突检测
 
-公开文档列表必须支持：
+更新文档时：
 
 ```text
-分页：page / pageSize
-搜索：q=标题关键词
-标签筛选：tag=kotlin
-排序：按 updatedAt 倒序
+客户端传入 localUpdatedAt
+服务端对比 localUpdatedAt 和当前云端 updatedAt
+若两者都有变更（本地 != 云端）→ 返回 409 Conflict + 云端当前版本
+客户端弹窗让用户选择保留本地或云端
 ```
 
 ---
 
-# 10. Todo 模块规范
+## 9.4 文档列表查询参数
 
-## 10.1 Todo CRUD
+```text
+?q=          全文搜索（文件名 + 标签 + 正文）
+?tag=        标签筛选
+?folder=     文件夹路径筛选
+?page=       分页
+?pageSize=   分页大小
+?sort=       排序（updatedAt DESC 默认）
+```
+
+---
+
+# 10. 附件模块规范
+
+## 10.1 附件 API
+
+必须实现：
+
+```text
+POST   /api/documents/{id}/attachments        上传附件（multipart/form-data）
+GET    /api/documents/{id}/attachments        获取文档附件列表
+GET    /api/attachments/{id}                  下载/获取附件数据
+DELETE /api/attachments/{id}                  删除附件
+GET    /api/documents/{id}/attachments/resolve?path=   根据相对路径解析附件
+```
+
+## 10.2 附件规范
+
+```text
+单文件最大 10MB，超出返回 413
+存储方式：PostgreSQL BYTEA
+相对路径解析：/api/documents/{id}/attachments/resolve?path=./images/a.png
+渲染时后端把相对路径解析为下载 URL，不修改原始 Markdown 内容
+```
+
+---
+
+# 11. Todo 模块规范
+
+## 11.1 Todo CRUD
 
 必须实现：
 
@@ -379,7 +413,7 @@ PUT    /api/todos/{id}/uncomplete  取消完成
 
 ---
 
-## 10.2 Todo 字段
+## 11.2 Todo 字段
 
 ```text
 id
@@ -389,6 +423,7 @@ priority: LOW / MEDIUM / HIGH
 dueDate
 completed
 completedAt
+sourceType: manual / ai
 sourceDocumentId
 sourceDocumentTitle
 ownerId
@@ -398,23 +433,25 @@ updatedAt
 
 ---
 
-# 11. AI 模块规范
+# 12. AI 模块规范
 
-## 11.1 AI Provider 配置
+## 12.1 AI Provider 配置
 
 必须实现：
 
 ```text
-GET    /api/ai/providers           获取用户 Provider 列表
+GET    /api/ai/providers           获取用户 Provider 配置
 POST   /api/ai/providers           添加 Provider
 PUT    /api/ai/providers/{id}      更新 Provider
 DELETE /api/ai/providers/{id}      删除 Provider
 POST   /api/ai/providers/{id}/test 测试连接
 ```
 
+V1 每个用户只支持一个 Provider 配置（OpenAI 兼容）。
+
 ---
 
-## 11.2 API Key 安全规范
+## 12.2 API Key 安全规范
 
 必须遵守：
 
@@ -429,7 +466,7 @@ POST   /api/ai/providers/{id}/test 测试连接
 
 ---
 
-## 11.3 AI 功能接口
+## 12.3 AI 功能接口
 
 必须实现：
 
@@ -442,7 +479,20 @@ POST /api/ai/todo/extract          提取待办
 
 ---
 
-## 11.4 AI 请求日志规范
+## 12.4 AI 会话管理接口
+
+必须实现：
+
+```text
+GET    /api/ai/conversations                    获取会话列表
+POST   /api/ai/conversations                    新建会话
+GET    /api/ai/conversations/{id}/messages      获取会话消息记录
+DELETE /api/ai/conversations/{id}               删除会话
+```
+
+---
+
+## 12.5 AI 请求日志规范
 
 ai_call_logs 表只保存：
 
@@ -462,27 +512,6 @@ prompt 内容
 API Key
 完整请求体
 完整响应体
-```
-
----
-
-# 12. 评论和点赞规范
-
-## 12.1 评论
-
-```text
-GET  /api/documents/{id}/comments    获取评论列表
-POST /api/documents/{id}/comments    发表评论（需登录）
-DELETE /api/documents/{id}/comments/{commentId}  删除评论（仅作者）
-```
-
----
-
-## 12.2 点赞
-
-```text
-POST   /api/documents/{id}/like    点赞（需登录）
-DELETE /api/documents/{id}/like    取消点赞（需登录）
 ```
 
 ---
@@ -510,12 +539,12 @@ Web 部署域名
 
 ```text
 密码 BCrypt 加密
-JWT 过期时间：建议 24 小时，刷新 Token 后续支持
+JWT 过期时间：建议 24 小时
 所有资源必须校验 owner
-公开文档以外的资源需 JWT 鉴权
 接口限流（注册、登录、AI 调用接口）
 API Key 加密保存
 日志不打印敏感字段
+附件大小限制 10MB，超出返回 413
 ```
 
 ---
@@ -566,13 +595,15 @@ Backend 通过 Nginx 反向代理：
 V1 Backend 必须通过以下验证：
 
 ```text
-POST /api/auth/register    注册成功，返回 Token
-POST /api/auth/login       登录成功，返回 Token
-POST /api/documents        创建文档成功
-GET  /api/documents        获取文档列表
-GET  /api/documents/public 获取公开文档列表
-POST /api/todos            创建 Todo
-POST /api/ai/providers     添加 AI Provider 配置
-POST /api/ai/chat          AI 提问返回结果
-POST /api/documents/{id}/comments  发表评论
+POST /api/auth/register              注册成功，返回 Token
+POST /api/auth/login                 登录成功，返回 Token
+POST /api/documents                  创建文档成功
+GET  /api/documents                  获取文档列表
+PUT  /api/documents/{id}             更新文档，冲突时返回 409
+POST /api/documents/{id}/attachments 上传附件成功
+GET  /api/documents/{id}/attachments/resolve?path= 相对路径解析成功
+POST /api/todos                      创建 Todo
+POST /api/ai/providers               添加 AI Provider 配置
+POST /api/ai/chat                    AI 提问返回结果
+GET  /api/ai/conversations           获取会话列表
 ```

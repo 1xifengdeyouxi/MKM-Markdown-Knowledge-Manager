@@ -12,7 +12,7 @@ Web 端是 MKM 的辅助管理端，不是 V1 的主体验端。
 
 ```text
 Web 端是 Android 主端的辅助工具。
-主要功能：文档管理和阅读，账号登录，云同步验证。
+主要功能：文档管理、文件夹树、待办管理、账号登录、云同步验证。
 不是 Web 优先产品。
 ```
 
@@ -20,22 +20,26 @@ V1 Web 端能力范围：
 
 ```text
 登录 / 注册
-文档列表
+知识库文件夹树
+文档列表（卡片/列表切换）
 创建 / 编辑 / 预览文档
-删除文档
+删除 / 重命名 / 移动文档
 Markdown 渲染
-导航栏
+搜索（文件名 + 标签 + 正文）
+标签管理
+待办列表 / 创建 / 完成 / 删除
 基础响应式布局
 ```
 
 V1 暂不做：
 
 ```text
-Todo Web 端
 AI 助手 Web 端
-知识库 Web 端
-个人设置 Web 端
-评论 Web 端
+复杂我的设置
+社区 Web 端
+评论 / 点赞
+通知中心
+复杂账号管理
 ```
 
 ---
@@ -79,23 +83,6 @@ DOMPurify
 | IDE | VS Code | 安装 Vue - Official 扩展 |
 | 浏览器 | Chrome + Vue Devtools | 调试组件和 Pinia 状态 |
 
-**安装 nvm（Apple Silicon Mac）：**
-
-```sh
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-source ~/.zshrc
-nvm install 20
-nvm use 20
-```
-
-**首次安装依赖：**
-
-```sh
-cd web
-npm install
-npm run dev    # http://localhost:5173
-```
-
 详细安装说明见：`docs/deployment/00-dev-environment.md`。
 
 ---
@@ -133,20 +120,27 @@ web/src/
 │   ├── client.js           Axios 实例 + 拦截器
 │   ├── auth.js
 │   ├── document.js
+│   ├── attachment.js
+│   ├── todo.js
 │   └── user.js
 ├── stores/
 │   ├── auth.js             登录状态
-│   └── document.js         文档状态
+│   ├── document.js         文档 / 文件夹树状态
+│   └── todo.js             待办状态
 ├── router/
 │   └── index.js
 ├── views/
 │   ├── LoginView.vue
-│   ├── DocumentListView.vue
-│   └── DocumentDetailView.vue
+│   ├── DocumentWorkspaceView.vue
+│   ├── DocumentDetailView.vue
+│   └── TodoView.vue
 ├── components/
+│   ├── AppShell.vue
 │   ├── NavBar.vue
+│   ├── FolderTree.vue
 │   ├── DocumentCard.vue
-│   └── MarkdownRenderer.vue
+│   ├── MarkdownRenderer.vue
+│   └── TodoItem.vue
 ├── App.vue
 └── main.js
 ```
@@ -157,17 +151,20 @@ web/src/
 
 ```text
 /login                 登录/注册页
-/                      文档列表（首页）
+/                      文档工作区（文件夹树 + 文档列表）
 /documents/new         新建文档
 /documents/:id         文档详情（预览 + 编辑）
+/todos                 待办列表
 ```
 
 路由守卫：
 
 ```text
-未登录访问 / 和 /documents/* → 跳转 /login
+未登录访问 /、/documents/*、/todos → 跳转 /login
 已登录访问 /login → 跳转 /
 ```
+
+Web 只管理云端同步数据，未登录不可使用。
 
 ---
 
@@ -182,48 +179,87 @@ web/src/
 用户名输入
 密码输入
 错误提示
-成功后跳转文档列表
+成功后跳转文档工作区
 ```
 
 ---
 
-## 6.2 DocumentListView
+## 6.2 DocumentWorkspaceView
 
 功能：
 
 ```text
-文档卡片列表
-新建文档按钮
-点击卡片进入详情
+左侧文件夹树
+右侧文档列表
+卡片 / 列表视图切换
+新建文档
+新建文件夹（云端结构）
+搜索框（文件名 + 标签 + 正文）
+标签筛选
+进入待办页入口
 退出登录
 ```
 
-文档卡片信息：
+文档信息：
 
 ```text
 标题
+文件名
+文件夹路径
 更新时间
 标签
+同步状态
 ```
 
 ---
 
-## 6.3 DocumentDetailView
+## 6.3 FolderTree 组件
+
+功能：
+
+```text
+展示知识库文件夹树
+展开 / 折叠文件夹
+选中文件夹后筛选文档
+支持移动文档到指定文件夹
+```
+
+V1 Web 不直接管理本地设备文件夹，只展示云端同步的文件夹结构。
+
+---
+
+## 6.4 DocumentDetailView
 
 功能：
 
 ```text
 预览模式：Markdown 渲染
-编辑模式：标题输入 + 内容输入
+编辑模式：标题输入 + 文件名 + 文件夹路径 + 标签 + 内容输入
 模式切换按钮
 保存按钮
 删除文档
-返回列表
+移动文档
+返回工作区
 ```
 
 ---
 
-## 6.4 MarkdownRenderer 组件
+## 6.5 TodoView
+
+功能：
+
+```text
+待办列表
+创建待办
+编辑标题、备注、日期、优先级
+标记完成 / 取消完成
+删除待办
+可显示关联文档标题
+```
+
+---
+
+## 6.6 MarkdownRenderer 组件
 
 规范：
 
@@ -231,6 +267,7 @@ web/src/
 使用 marked 渲染 Markdown
 使用 DOMPurify 过滤 HTML，防止 XSS
 支持 GFM（GitHub Flavored Markdown）
+相对路径图片和附件由后端/API 解析为下载地址
 代码块加高亮支持（highlight.js，可选）
 ```
 
@@ -285,13 +322,35 @@ token 持久化：localStorage
 
 ```text
 documents
+folderTree
+currentFolder
 currentDocument
+viewMode: card / list
+searchQuery
+selectedTag
 loading
 error
 fetchDocuments()
 fetchDocument(id)
 saveDocument(data)
 deleteDocument(id)
+moveDocument(id, folderPath)
+```
+
+---
+
+## 8.3 todo store
+
+```text
+todos
+loading
+error
+fetchTodos()
+createTodo(data)
+updateTodo(id, data)
+completeTodo(id)
+uncompleteTodo(id)
+deleteTodo(id)
 ```
 
 ---
@@ -307,6 +366,7 @@ Markdown 渲染必须经过 DOMPurify 过滤
 不日志打印 Token
 401 自动跳转登录
 生产环境使用 HTTPS
+附件下载必须携带鉴权
 ```
 
 ---
@@ -318,10 +378,10 @@ V1 使用简洁样式：
 ```text
 无 UI 框架
 原生 CSS + CSS Variables
-移动优先响应式（最大宽度 960px）
+移动优先响应式（最大宽度 1200px）
 字体：系统字体
 代码字体：Menlo / Consolas / monospace
-主色：#3F51B5（与 Android 保持一致）
+主色：#3F51B5（与 Android 保持一致，可后续跟随自定义主色）
 背景：#FFFFFF / #F5F5F5
 ```
 
@@ -359,11 +419,14 @@ location /api/ {
 V1 Web 端必须通过以下验证：
 
 ```text
-打开 /login → 注册账号 → 跳转文档列表
-文档列表展示正确
-新建文档 → 输入内容 → 保存
+打开 /login → 注册账号 → 跳转文档工作区
+文件夹树展示正确
+新建文档 → 输入内容和标签 → 保存
 点击文档 → 预览 Markdown 渲染
 切换编辑模式 → 修改 → 保存
+搜索文件名 / 标签 / 正文 → 结果正确
+创建待办 → 标记完成 → 删除
+Android 同步的文档 → Web 刷新后能看到
+Web 修改的文档 → Android 同步后能看到
 退出登录 → 跳转 /login
-Android 创建的文档 → Web 刷新后能看到
 ```
